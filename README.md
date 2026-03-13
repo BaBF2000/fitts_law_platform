@@ -1,9 +1,12 @@
 # Fitts' Law Experiment Platform
-
+![HTML5](https://img.shields.io/badge/HTML5-structure-orange)
+![CSS3](https://img.shields.io/badge/CSS3-style-blue)
+![JavaScript](https://img.shields.io/badge/JavaScript-interaction-yellow)
 ![Python](https://img.shields.io/badge/python-3.x-blue)
 ![Flask](https://img.shields.io/badge/backend-flask-green)
 ![License](https://img.shields.io/badge/license-academic-lightgrey)
 ![Status](https://img.shields.io/badge/status-research%20prototype-orange)
+![HCI](https://img.shields.io/badge/HCI-experiment-purple)
 
 Web-based experimental platform developed for a **Bachelor thesis in Human–Computer Interaction (HCI)**.
 
