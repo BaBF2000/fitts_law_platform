@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <!-- Document metadata -->
+    <meta charset="utf-8" />
+
+    <!-- Base UI styles -->
+    <link rel="stylesheet" href="/static/css/style.css" />
+
+    <!-- PWA manifest + icons -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/static/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+
+    <!-- Theme colors (keep consistent across light/dark) -->
+    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#000000" />
+    <meta name="background-color" content="#151515" />
+
+    <!-- PWA capability flags (best-effort; browser-dependent) -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Full-viewport layout; viewport-fit enables safe-area insets on iOS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <title>Fitt'sches Gesetz</title>
+  </head>
+
+  <body>
+    <div id="application">
+      <!-- Heads-up display: stays visible during trials -->
+      <div id="hud">
+        <div class="pill" id="hudLeft">Bereit</div>
+        <div class="pill" id="hudRight">W×H: —</div>
+      </div>
+
+      <!-- Pointer/touch indicator (hidden until a run starts) -->
+      <div id="crosshair" style="display: none"></div>
+
+      <!-- Target element; size/shape/position is updated per trial -->
+      <div id="target" style="display: none"></div>
+
+      <!-- Start/setup screen (shown before the run) -->
+      <div id="startCard" class="setupPanel">
+        <div class="card">
+          <div class="cardScroll">
+            <!-- Title + calibration status badge -->
+            <div id="titleRow">
+              <div class="pill" id="titleRowLeft">
+                <h1>Modul des Fitts'schen Gesetzes</h1>
+              </div>
+
+              <!-- Calibration badge: dot + text + optional uncertainty -->
+              <div class="calStatus" id="calStatus">
+                <span class="dot" id="calDot"></span>
+                <span id="calStatusText">Nicht kalibriert</span>
+                <span class="calMeta" id="calStatusMeta"></span>
+              </div>
+            </div>
+
+            <!-- Operator instructions (German UI text) -->
+            <p class="muted">
+              1) Starten Sie das Experiment durch Klicken auf <b>Start</b>
+              (Aktivierung des Vollbildmodus).<br />
+              2) Führen Sie die Kalibrierung mithilfe einer Bankkarte durch, um
+              eine Umrechnung von Pixeln in Millimeter (mm) zu ermöglichen.<br />
+              3) Das Experiment führt mehrere Durchgänge gemäß dem Versuchsdesign
+              durch und exportiert die erfassten Daten im CSV-Format.
+            </p>
+
+            <!-- Primary actions: calibration + strict mode toggle -->
+            <div class="rowSpaceBetween" id="topActions">
+              <div class="row">
+                <button id="buttonCalibration">Kalibrierung</button>
+                <button id="btnClearCalibration" class="pillBtn" type="button" disabled>
+                  Reset Kalibrierung
+                </button>
+              </div>
+
+              <!-- Strict mode constrains block parameters for controlled runs -->
+              <label class="inline" style="gap: 10px">
+                <input id="strictMode" type="checkbox" />
+                Strict-Modus (5–25 pro Block, keine Listen)
+              </label>
+            </div>
+
+            <!-- Fullscreen dimensions in cm (only available after calibration) -->
+            <div id="fullscreenDimsCm">
+              Vollbildmodusabmessungen (W×H): — cm × — cm
+            </div>
+
+            <hr class="sep" />
+
+            <!-- Participant/session identifiers -->
+            <div class="row">
+              <div>
+                <label>Teilnehmer ID</label>
+                <input id="participantId" type="text" value="P01" />
+
+                <!-- Shown when the participant already exists in the DB -->
+                <div class="hintRow warn" id="participantHintRow" style="display: none">
+                  <div class="hintIcon">⚠️</div>
+                  <div class="hintText" id="participantHintText"></div>
+                </div>
+              </div>
+
+              <div>
+                <label>Versuch ID</label>
+                <input id="sessionId" type="text" value="S1" />
+
+                <!-- Shown when the session ID already exists for this participant -->
+                <div class="hintRow error" id="sessionHintRow" style="display: none">
+                  <div class="hintIcon">⛔</div>
+                  <div class="hintText" id="sessionHintText"></div>
+                </div>
+              </div>
+            </div>
+
+            <hr class="sep" />
+
+            <!-- Global experiment parameters (applies to all blocks) -->
+            <h2>Versuchsparameter</h2>
+            <div class="formGrid threeCols">
+              <div class="field">
+                <label>Einheit</label>
+                <select id="distanceMode">
+                  <option value="relative">Relativ (% der kleineren Seite)</option>
+                  <option value="px">In px</option>
+                  <option value="mm">In mm (bei Kalibrierung)</option>
+                </select>
+                <div class="muted">rel: 0.25 = 25% von min(W,H)</div>
+              </div>
+
+              <div class="field">
+                <label>Schwierigkeitsindex - Formel</label>
+                <select id="IDFormula">
+                  <option value="shannon">Shannon (MacKenzie, 1992): ID = log₂(A / W + 1)</option>
+                  <option value="classic">Klassik (Fitts, 1954): log₂(2A / W)</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label>Timeout (ms)</label>
+                <input id="timeoutMs" type="number" min="0" max="20000" value="0" />
+                <div class="muted">0 = Kein Zeitlimit</div>
+              </div>
+            </div>
+
+            <!-- Trial count is derived from the sum of configured block trials -->
+            <div class="formGrid twoCols">
+              <div class="field">
+                <label>Anzahl der Durchgänge</label>
+                <input id="trialCount" type="number" value="0" readonly />
+                <div class="muted">Anzahl der Durchgänge = Summe der Block-Trials</div>
+              </div>
+
+              <div class="field">
+                <label>&nbsp;</label>
+                <button id="buttonSessionConfig">Session konfigurieren</button>
+              </div>
+            </div>
+
+            <hr class="sep" />
+
+            <!-- Run controls -->
+            <div class="row">
+              <button id="buttonStart">Experiment starten</button>
+              <button id="buttonDemonstration">Demo</button>
+
+              <!-- Debug button (only shown when ?debug=1; toggle handled in JS) -->
+              <button id="hudDebugBtn" type="button">🐞 Debug: OFF</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calibration screen (pixel-to-mm mapping using a bank card width reference) -->
+      <div class="panel" id="calibrationPanel" style="display: none">
+        <div class="card">
+          <div class="cardScroll">
+            <h1>Kalibrierung (Pixel → mm)</h1>
+            <p>
+              Passen Sie das Rechteck so an, dass es einer <b>Bankkarte</b>
+              entspricht (tatsächliche Breite = <b>85,60 mm</b>). Klicken Sie
+              anschließend auf „Bestätigen“.
+            </p>
+
+            <div class="row center">
+              <div id="calibrationRectangle">
+                <div id="handle"></div>
+              </div>
+            </div>
+
+            <div class="rowSpaceBetween">
+              <!-- Live calibration readout -->
+              <div class="kpi">
+                <div><b>Breite</b><span id="calibrationPx">— px</span></div>
+                <div><b>Faktor</b><span id="calibrationMmPerPx">— mm/px</span></div>
+              </div>
+
+              <!-- Navigation actions -->
+              <div class="row">
+                <button id="buttonBack">Zurück</button>
+                <button id="buttonValidateCalibration">Kalibrierung bestätigen</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Session blocks configuration (block design: A/W/ID + shapes + shuffle) -->
+      <div class="panel" id="sessionConfigPanel" style="display: none">
+        <div class="card sessionCard">
+          <div class="sessionHeader">
+            <h1>Session konfigurieren</h1>
+
+            <p class="muted">
+              Definieren Sie Blöcke. Jedes Feld A/W/ID akzeptiert entweder eine Zahl (z. B. 0.5)
+              oder eine Liste (z. B. [0.1, 0.3, 0.5]).<br />
+              - Liste → zufällige Auswahl aus der Liste<br />
+              - Zahl → „festlegen“ = fix, sonst zufällig zwischen 0 und Wert
+            </p>
+
+            <div class="row sessionStickyActions">
+              <button id="btnAddBlock" type="button">+ Block hinzufügen</button>
+              <button id="btnClearBlocks" type="button">Blöcke löschen</button>
+            </div>
+
+            <hr class="sep" />
+          </div>
+
+          <div class="sessionBody">
+            <div id="blocksContainer"></div>
+          </div>
+
+          <div class="sessionFooter">
+            <hr class="sep" />
+            <div class="row">
+              <button id="btnSessionBack" type="button">Zurück</button>
+              <button id="btnSessionApply" type="button">Übernehmen</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- End screen: summary + export/save options -->
+      <div class="panel" id="endPanel" style="display: none">
+        <div class="card">
+          <div class="cardScroll">
+            <h1>Fertig ✅</h1>
+
+            <!-- Summary metrics -->
+            <div class="kpi">
+              <div><b>Durchgänge</b><span id="sumTrials">—</span></div>
+              <div><b>Fehler</b><span id="sumErrors">—</span></div>
+              <div><b>mittleres MT</b><span id="sumMT">—</span></div>
+              <div><b>mittleres ID</b><span id="sumID">—</span></div>
+            </div>
+
+            <!-- Data export options -->
+            <div class="row">
+              <button id="btnSaveServer">Auf Server speichern</button>
+              <button id="btnDownload">CSV herunterladen</button>
+              <button id="btnRestart">Neuer Versuch</button>
+            </div>
+
+            <p class="muted">CSV: D/W/ID/MT + Koordinaten + Fehler + Viewport + Faktor.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Optional PWA support: register a service worker if available.
+      // Must never break the experiment flow if registration fails.
+      (function () {
+        if (!("serviceWorker" in navigator)) return;
+
+        let reloadRequested = false;
+
+        function showUpdateBanner(onReload) {
+          const el = document.createElement("div");
+          el.style.cssText =
+            "position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;" +
+            "background:#111;color:#fff;padding:12px 14px;border-radius:12px;" +
+            "display:flex;gap:12px;align-items:center;justify-content:space-between;" +
+            "font:14px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;opacity:.95";
+          el.innerHTML =
+            "<div><b>Update available</b><div style='opacity:.8;font-size:12px'>Reload to use the latest version.</div></div>";
+
+          const btn = document.createElement("button");
+          btn.textContent = "Reload";
+          btn.style.cssText =
+            "background:#fff;color:#000;border:0;border-radius:10px;padding:8px 12px;cursor:pointer;font-weight:600";
+
+          btn.addEventListener("click", () => {
+            reloadRequested = true;
+            try { onReload(); } finally { el.remove(); }
+          });
+
+          el.appendChild(btn);
+          document.body.appendChild(el);
+        }
+
+        window.addEventListener("load", async () => {
+          try {
+            const reg = await navigator.serviceWorker.register("/sw.js");
+
+            // If a new SW is already waiting, prompt the operator to reload.
+            if (reg.waiting) {
+              showUpdateBanner(() => {
+                reg.waiting.postMessage({ type: "SKIP_WAITING" });
+              });
+            }
+
+            // When an update is found, show a banner once the new SW is installed.
+            reg.addEventListener("updatefound", () => {
+              const sw = reg.installing;
+              if (!sw) return;
+
+              sw.addEventListener("statechange", () => {
+                if (sw.state === "installed" && navigator.serviceWorker.controller) {
+                  showUpdateBanner(() => {
+                    reg.waiting?.postMessage({ type: "SKIP_WAITING" });
+                  });
+                }
+              });
+            });
+
+            // Only reload when the operator explicitly requested it.
+            navigator.serviceWorker.addEventListener("controllerchange", () => {
+              if (reloadRequested) window.location.reload();
+            });
+          } catch (err) {
+            // Silent by design: SW may be blocked depending on browser / HTTP context.
+          }
+        });
+      })();
+    </script>
+
+    <script>
+      // Optional SW diagnostics, only when explicitly enabled via ?pwaDebug=1
+      (function () {
+        const params = new URLSearchParams(location.search);
+        if (params.get("pwaDebug") !== "1") return;
+
+        const out = document.createElement("div");
+        out.style.cssText =
+          "position:fixed;left:10px;bottom:10px;z-index:99999;background:#111;color:#0f0;" +
+          "padding:10px;border-radius:10px;font:12px/1.4 monospace;max-width:92vw;opacity:.9";
+        out.textContent = "PWA debug…";
+        document.body.appendChild(out);
+
+        const log = (k, v) => (out.textContent += `\n${k}: ${v}`);
+
+        log("protocol", location.protocol);
+        log("host", location.host);
+        log("SW supported", "serviceWorker" in navigator);
+
+        if (!("serviceWorker" in navigator)) return;
+
+        navigator.serviceWorker.getRegistration()
+          .then((reg) => {
+            log("registration", reg ? "YES" : "NO");
+            log("scope", reg?.scope || "—");
+            log("controller", navigator.serviceWorker.controller ? "YES" : "NO");
+          })
+          .catch((e) => log("err", e?.message || String(e)));
+      })();
+    </script>
+
+    <!-- Main JS entry (module-based app boot) -->
+    <script type="module" src="/static/javascript/main.js"></script>
+  </body>
+</html>

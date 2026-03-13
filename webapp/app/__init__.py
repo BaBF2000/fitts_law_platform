@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+import os
+
+from flask import Flask, Response, request
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+from .db import ensure_columns, init_db
+from .routes import bp as routes_bp
+from .security import is_private_client
+
+
+def create_app() -> Flask:
+    """
+    Flask application factory.
+
+    Centralizes:
+      - environment-driven configuration
+      - LAN-only restriction (optional public override)
+      - optional admin-token protection for admin endpoints
+      - cache-control behavior (dev vs production)
+      - optional trusted reverse-proxy support (ProxyFix)
+    """
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    app = Flask(
+        __name__,
+        static_folder=os.path.join(base_dir, "static"),
+        static_url_path="/static",
+        template_folder=os.path.join(base_dir, "templates"),
+    )
+
+    # ---------------------------------------------------------------------
+    # Environment configuration
+    # ---------------------------------------------------------------------
+
+    # DEV_NO_CACHE=1 disables caching for static/PWA assets to avoid stale JS/CSS
+    # during tablet testing or rapid iteration.
+    app.config["DEV_NO_CACHE"] = os.environ.get("DEV_NO_CACHE", "0") == "1"
+
+    # ADMIN_TOKEN enables a lightweight protection for admin endpoints.
+    # Token can be passed via ?token=... or X-Admin-Token: ...
+    app.config["ADMIN_TOKEN"] = os.environ.get("ADMIN_TOKEN", "").strip()
+
+    # ALLOW_PUBLIC=1 disables LAN-only restriction (useful for controlled external testing).
+    # Keep it OFF for real deployments on a local network.
+    app.config["ALLOW_PUBLIC"] = os.environ.get("ALLOW_PUBLIC", "0") == "1"
+
+    # TRUST_PROXY=1 enables ProxyFix to trust exactly one proxy hop (e.g., ngrok/nginx).
+    # Only enable this if you control the proxy and understand the risk.
+    if os.environ.get("TRUST_PROXY", "0") == "1":
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    # Admin route prefixes can be overridden via ADMIN_PREFIXES="..., ...".
+    prefixes_env = os.environ.get("ADMIN_PREFIXES", "").strip()
+    if prefixes_env:
+        app.config["ADMIN_PREFIXES"] = tuple(
+            p.strip() for p in prefixes_env.split(",") if p.strip()
+        )
+    else:
+        app.config["ADMIN_PREFIXES"] = ("/dashboard", "/export/", "/routes")
+
+    # ---------------------------------------------------------------------
+    # Helper utilities
+    # ---------------------------------------------------------------------
+
+    def get_client_ip() -> str:
+        """
+        Return the client IP address as seen by Flask.
+
+        If TRUST_PROXY=1 is enabled, ProxyFix updates request.remote_addr using X-Forwarded-For.
+        """
+        return request.remote_addr or ""
+
+    def is_admin_path(path: str) -> bool:
+        """
+        Return True if the request path matches one of the admin-only prefixes.
+        """
+        prefixes = app.config.get("ADMIN_PREFIXES", ())
+        return any(path == p or path.startswith(p) for p in prefixes)
+
+    def has_valid_admin_token() -> bool:
+        """
+        Validate the admin token using query string or header.
+
+        Supported:
+          - ?token=...
+          - X-Admin-Token: ...
+        """
+        required = app.config.get("ADMIN_TOKEN", "")
+        if not required:
+            return False
+
+        q = (request.args.get("token") or "").strip()
+        h = (request.headers.get("X-Admin-Token") or "").strip()
+        return (q == required) or (h == required)
+
+    # ---------------------------------------------------------------------
+    # Request guard
+    # ---------------------------------------------------------------------
+
+    @app.before_request
+    def lan_only_guard():
+        """
+        Access policy:
+          1) If ALLOW_PUBLIC=1: allow all clients.
+          2) Otherwise: allow only private/LAN client IPs.
+          3) If ADMIN_TOKEN is configured: require it for admin endpoints (even on LAN).
+        """
+        if app.config.get("ALLOW_PUBLIC", False):
+            return None
+
+        if not is_private_client(get_client_ip()):
+            # Keep responses simple (no HTML) for kiosk-like clients.
+            return Response("Forbidden (LAN only)", status=403, mimetype="text/plain")
+
+        if is_admin_path(request.path) and app.config.get("ADMIN_TOKEN", ""):
+            if not has_valid_admin_token():
+                return Response(
+                    "Forbidden (admin token required)", status=403, mimetype="text/plain"
+                )
+
+        return None
+
+    # ---------------------------------------------------------------------
+    # Cache headers
+    # ---------------------------------------------------------------------
+
+    @app.after_request
+    def add_cache_headers(resp):
+        """
+        Cache policy:
+
+        - DEV_NO_CACHE=1:
+            Disable caching for static files and PWA assets to prevent stale code.
+        - Otherwise:
+            Force revalidation for manifest and service worker so updates propagate.
+        """
+        path = request.path or ""
+
+        if app.config.get("DEV_NO_CACHE", False):
+            if (
+                path.startswith("/static/")
+                or path.endswith(".webmanifest")
+                or path.endswith(".js")
+                or path.endswith(".css")
+                or path.endswith("/sw.js")
+            ):
+                resp.headers["Cache-Control"] = "no-store"
+                return resp
+
+        # In production, keep SW/manifest revalidated frequently.
+        if path.endswith(".webmanifest") or path.endswith("/sw.js"):
+            resp.headers["Cache-Control"] = "no-cache"
+
+        return resp
+
+    # ---------------------------------------------------------------------
+    # Blueprint + DB init
+    # ---------------------------------------------------------------------
+
+    app.register_blueprint(routes_bp)
+
+    # Create tables + apply lightweight migrations on startup.
+    init_db()
+    ensure_columns()
+
+    return app
