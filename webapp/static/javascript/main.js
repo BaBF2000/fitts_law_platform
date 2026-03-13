@@ -1,4 +1,3 @@
-// main.js
 // Application bootstrap and UI wiring for the Fitts' Law experiment.
 //
 // Responsibilities:

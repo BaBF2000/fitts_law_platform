@@ -54,7 +54,7 @@ The system aims to provide **accurate and reproducible measurements** for resear
 
 # System Architecture Diagram
 
-
+```text
 ┌──────────────────────┐
 │       Browser        │
 │  HTML / CSS / JS     │
@@ -77,39 +77,28 @@ The system aims to provide **accurate and reproducible measurements** for resear
 │ sessions             │
 │ trials               │
 └──────────────────────┘
-
+```
 
 ---
 
 # Repository Structure
 
+```text
 fitt_law
+│
+├── .git
+├── README.md
+├── LICENSE
+├── .gitignore
 │
 ├── webapp
 │   ├── app
-│   │   ├── __init__.py
-│   │   ├── db.py
-│   │   ├── routes.py
-│   │   └── security.py
-│   │
 │   ├── static
-│   │   ├── css
-│   │   ├── javascript
-│   │   └── icons
-│   │
 │   ├── templates
-│   │   └── index.html
-│   │
-│   ├── data
-│   │   └── exports
-│   │
-│   ├── server.py
-│   └── requirements.txt
+│   └── server.py
 │
-├── tools
-│   └── project_tree.py
-│
-└── ngrok.exe
+└── tools
+```
 
 The repository is organized into:
 
@@ -123,6 +112,7 @@ The repository is organized into:
 
 # Database Schema
 
+```text
 participant
 ────────────
 participant_id (PK)
@@ -152,7 +142,7 @@ effective_distance
 effective_index_of_difficulty
 
 Each **trial** corresponds to one pointing action in the experiment.
-
+```
 ---
 
 
@@ -224,29 +214,7 @@ Additional device context is recorded:
 
 This allows **reproducibility of experimental conditions**.
 
----
 
-# System Architecture
-
-The platform uses a **full-stack architecture** consisting of:
-
-- browser-based frontend
-- Python backend
-- SQLite database
-
-Architecture overview:
-
-Browser  
-│  
-├── HTML / CSS interface  
-│  
-├── JavaScript experiment engine  
-│  
-└── REST API  
-  │  
-  └── Flask backend  
-    │  
-    └── SQLite database  
 
 ---
 

@@ -1,4 +1,3 @@
-// dom.js
 /**
  * Centralized DOM access layer.
  *
