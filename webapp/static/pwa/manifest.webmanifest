@@ -1,6 +1,6 @@
 {
-  "name": "Fitts Law Experiment",
-  "short_name": "FittsExp",
+  "name": "Fitts Display Lab",
+  "short_name": "FittsLab",
   "description": "Experimental module for large-display Fitts' Law studies.",
   "start_url": "/?source=pwa",
   "scope": "/",

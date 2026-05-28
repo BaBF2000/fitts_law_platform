@@ -6,6 +6,8 @@ import { setFullscreenEnforcement, setWakeLock } from "./helpers.js";
  * Views:
  *  - "start": setup screen
  *  - "cal": calibration screen
+ *  - "touchability": finger/touchability test
+ *  - "run": experiment running
  *  - "end": end/summary screen
  *
  * Fullscreen / wake-lock policy:
@@ -18,13 +20,24 @@ import { setFullscreenEnforcement, setWakeLock } from "./helpers.js";
 export function show(dom, which) {
   if (!dom) return;
 
-  // Defensive: these nodes should exist, but avoid hard crashes on HTML mismatch.
-  if (dom.startCard) dom.startCard.style.display = (which === "start") ? "flex" : "none";
-  if (dom.calPanel) dom.calPanel.style.display = (which === "cal") ? "flex" : "none";
-  if (dom.endPanel) dom.endPanel.style.display = (which === "end") ? "flex" : "none";
+  if (dom.startCard) {
+    dom.startCard.style.display = which === "start" ? "flex" : "none";
+  }
 
-  // Treat only start + calibration as non-running.
-  const running = (which !== "start" && which !== "cal");
+  if (dom.calPanel) {
+    dom.calPanel.style.display = which === "cal" ? "flex" : "none";
+  }
+
+  if (dom.touchabilityPanel) {
+    dom.touchabilityPanel.style.display =
+      which === "touchability" ? "flex" : "none";
+  }
+
+  if (dom.endPanel) {
+    dom.endPanel.style.display = which === "end" ? "flex" : "none";
+  }
+
+  const running = which === "run" || which === "end";
 
   setFullscreenEnforcement(running);
   setWakeLock(running);

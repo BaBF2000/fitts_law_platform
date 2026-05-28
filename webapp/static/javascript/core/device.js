@@ -18,7 +18,7 @@ export function getDeviceContext() {
   // Screen & viewport metrics
   // ------------------------------------------------------------
 
-  // Physical screen resolution (CSS pixels)
+  // Reported screen size in CSS pixels
   const screenW = window.screen?.width ?? null;
   const screenH = window.screen?.height ?? null;
 

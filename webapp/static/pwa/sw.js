@@ -1,5 +1,5 @@
 // Increment this when you want to force-refresh cached assets (hard cache bust).
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v13";
 const CACHE = `fitts-${CACHE_VERSION}`;
 
 // Handle messages from pages (e.g., update banner -> request immediate activation).
@@ -15,7 +15,38 @@ self.addEventListener("message", (event) => {
 const PRECACHE = [
   "/", // Main page (served by Flask template)
   "/static/css/style.css",
+
+  // Main entry point
   "/static/javascript/main.js",
+
+  // Core modules
+  "/static/javascript/core/constants.js",
+  "/static/javascript/core/device.js",
+  "/static/javascript/core/dom.js",
+  "/static/javascript/core/geometry.js",
+  "/static/javascript/core/helpers.js",
+  "/static/javascript/core/server.js",
+  "/static/javascript/core/state.js",
+  "/static/javascript/core/storage.js",
+  "/static/javascript/core/ui.js",
+
+  // Experiment modules
+  "/static/javascript/modules/calibration.js",
+  "/static/javascript/modules/experiment.js",
+  "/static/javascript/modules/fingerTouchability.js",
+  "/static/javascript/modules/protocol.js",
+  "/static/javascript/modules/sessionDesign.js",
+  "/static/javascript/modules/trialPairEngine.js",
+  "/static/javascript/modules/trialParameters.js",
+
+  // Target modules
+  "/static/javascript/targets/Target.js",
+  "/static/javascript/targets/TargetDebugOverlay.js",
+  "/static/javascript/targets/TargetFactory.js",
+  "/static/javascript/targets/TouchArea.js",
+  "/static/javascript/modules/monteCarlo.js",
+  // Debug module
+  "/static/javascript/debug/debug.js",
 
   // PWA entry (served by Flask route)
   "/manifest.webmanifest",

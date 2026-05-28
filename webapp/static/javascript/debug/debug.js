@@ -48,7 +48,7 @@ export function setEnabled(on) {
   }
 
   ensureEl();
-  log(" debug enabled");
+  log("debug overlay enabled");
 }
 
 export function toggleDebug() {

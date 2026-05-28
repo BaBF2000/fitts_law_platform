@@ -161,7 +161,8 @@ def create_app() -> Flask:
 
     app.register_blueprint(routes_bp)
 
-    # Create tables + apply lightweight migrations on startup.
+    # Create tables on startup.
+    # ensure_columns() is kept for compatibility and intentionally does not migrate.
     init_db()
     ensure_columns()
 

@@ -6,7 +6,7 @@ export function initCalibration(dom, state, ui) {
   const REF_MM = 85.60;
   const CARD_RATIO = 85.60 / 53.98;
 
-  const N_SAMPLES = 3;
+  const N_SAMPLES = 5;
 
   // Pinch/drag state (local, not global app state)
   let dragging = false;
@@ -73,7 +73,8 @@ export function initCalibration(dom, state, ui) {
     if (!touches) return;
 
     if (touches.length === 1) {
-      // One finger: drag-resize horizontally (dynamic, no tiny handle needed)
+      // One finger: horizontal drag-resize.
+      // Avoids requiring a small resize handle on touch devices.
       dragging = true;
       pinching = false;
 
@@ -191,7 +192,8 @@ export function initCalibration(dom, state, ui) {
     initRect() {
       if (!dom.calRect) return;
 
-      // initial size
+      // Initial visual card size in CSS pixels.
+      // Only used as a starting point before user adjustment.
       setRectWidthPx(340);
 
       // reset sampling + snap reference
@@ -242,6 +244,7 @@ export function initCalibration(dom, state, ui) {
       saveCalibration({
         mmPerPx: state.mmPerPx,
         calRectWidthPx: w,
+        calErrorPct: state.calErrorPct,
       });
 
       state.calSamples = [];

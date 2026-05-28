@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime, timezone
 from io import StringIO
 from threading import Lock
-from typing import  Sequence
+from typing import Sequence
 
 from flask import Response
 
@@ -20,8 +20,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 DB_PATH = os.path.join(DATA_DIR, "fitts.db")
 
-# Serializes writes when multiple requests attempt inserts concurrently.
-# (SQLite can handle concurrency with WAL, but a write lock avoids "database is locked" spikes.)
+# Serializes concurrent writes and reduces short SQLite lock spikes.
 DB_WRITE_LOCK = Lock()
 
 
@@ -33,13 +32,7 @@ _SAFE_NAME_MAXLEN = 60
 
 def safe_name(value: str | None, fallback: str) -> str:
     """
-    Sanitize user-provided identifiers so they are safe for filesystem / DB usage.
-
-    Rules:
-      - Trim whitespace
-      - Replace any non [a-zA-Z0-9_-] with "_"
-      - Cap length to keep filenames manageable
-      - Return fallback if empty after sanitation
+    Sanitize user-provided identifiers for safe filesystem and DB usage.
     """
     s = (value or "").strip()
     if not s:
@@ -52,10 +45,7 @@ def safe_name(value: str | None, fallback: str) -> str:
 
 def html_escape(value: object) -> str:
     """
-    Minimal HTML escaping for server-rendered admin pages.
-
-    Note: Prefer Flask/Jinja auto-escaping when possible. This helper is for cases
-    where strings are assembled manually.
+    Minimal HTML escaping for manually assembled admin pages.
     """
     s = "" if value is None else str(value)
     return (
@@ -68,38 +58,29 @@ def html_escape(value: object) -> str:
 
 def now_iso_seconds() -> str:
     """
-    Return an ISO timestamp (UTC) with seconds precision.
-
-    Using UTC avoids timezone-dependent exports and makes comparisons easier.
+    Return a UTC ISO timestamp with seconds precision.
     """
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def db() -> sqlite3.Connection:
     """
-    Create a SQLite connection configured for concurrent reads/writes.
-
-    Notes:
-      - WAL improves read/write concurrency.
-      - check_same_thread=False allows usage across threads (Flask + SQLite).
-      - busy_timeout reduces transient lock errors.
+    Create a SQLite connection configured for concurrent web usage.
     """
     conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
 
-    # Pragmas are applied per-connection.
     conn.execute("PRAGMA foreign_keys=ON;")
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA busy_timeout=5000;")
+
     return conn
 
 
 def rows_to_csv_response(rows: Sequence[sqlite3.Row], filename: str) -> Response:
     """
-    Convert a list of sqlite3.Row into a downloadable CSV response.
-
-    If rows is empty, a valid CSV with no header is returned.
+    Convert sqlite3 rows into a downloadable CSV response.
     """
     out = StringIO()
     writer = csv.writer(out, lineterminator="\n")
@@ -107,8 +88,9 @@ def rows_to_csv_response(rows: Sequence[sqlite3.Row], filename: str) -> Response
     if rows:
         header = list(rows[0].keys())
         writer.writerow(header)
-        for r in rows:
-            writer.writerow([r[h] for h in header])
+
+        for row in rows:
+            writer.writerow([row[h] for h in header])
 
     return Response(
         out.getvalue(),
@@ -117,13 +99,15 @@ def rows_to_csv_response(rows: Sequence[sqlite3.Row], filename: str) -> Response
     )
 
 
-# ---------------- DB init / migrations ----------------
+# ---------------- DB init ----------------
 
 def init_db() -> None:
     """
-    Create tables if they are missing.
+    Create the current database schema.
 
-    This is safe to call multiple times.
+    Important:
+      This does not modify existing tables. For an old fitts.db, delete it or
+      migrate it manually before using this schema.
     """
     with db() as conn:
         cur = conn.cursor()
@@ -146,11 +130,29 @@ def init_db() -> None:
 
               is_demo INTEGER DEFAULT 0,
 
+              session_comment TEXT,
+              protocol_name TEXT,
+              protocol_comment TEXT,
+              protocol_json TEXT,
+
+              monte_carlo_summary_json TEXT,
+              monte_carlo_warning_count INTEGER,
+              monte_carlo_worst_clamp_pct REAL,
+              monte_carlo_worst_diagnostic TEXT,
+              monte_carlo_mean_clamped_min_pct REAL,
+              monte_carlo_mean_clamped_max_pct REAL,
+
               unit TEXT,
               formula TEXT,
               timeout_ms INTEGER,
               trial_count INTEGER,
+              interactions_per_trial INTEGER,
+
               target_shape TEXT,
+              param_mode TEXT,
+              required_overlap REAL,
+              touch_diameter_px REAL,
+              touch_diameter_mm REAL,
 
               mm_per_px REAL,
               viewport_w INTEGER,
@@ -173,23 +175,93 @@ def init_db() -> None:
               trial_no INTEGER,
               timestamp_iso TEXT,
 
+              interaction_no INTEGER,
+              active_target_key TEXT,
+              interactions_per_trial INTEGER,
+              trial_summary INTEGER DEFAULT 0,
+
+              unit TEXT,
+              formula TEXT,
+              shape TEXT,
               target_shape TEXT,
-              target_bbox_left REAL,
-              target_bbox_top REAL,
-              target_bbox_w REAL,
-              target_bbox_h REAL,
+
+              param_mode TEXT,
+              random_A INTEGER DEFAULT 0,
+              random_W INTEGER DEFAULT 0,
+              random_ID INTEGER DEFAULT 0,
+
+              target_x REAL,
+              target_y REAL,
+              target_width_px REAL,
+              target_height_px REAL,
+
               target_hit_geom_json TEXT,
 
-              A_in REAL, W_in REAL, ID_in REAL,
-              A_px_planned REAL, W_px REAL, A_mm_planned REAL, W_mm REAL, ID_planned REAL,
-              D_px_effective REAL, D_mm_effective REAL, ID_effective REAL,
+              A_in REAL,
+              W_in REAL,
+              ID_in REAL,
 
-              prev_x REAL, prev_y REAL, x REAL, y REAL, placed TEXT,
+              A_px_planned REAL,
+              W_px REAL,
+              W_axis_planned_px REAL,
+
+              A_mm_planned REAL,
+              W_mm REAL,
+              W_axis_planned_mm REAL,
+
+              ID_planned REAL,
+
+              axis_planned_c_x REAL,
+              axis_planned_c_y REAL,
+              axis_planned_d_x REAL,
+              axis_planned_d_y REAL,
+
+              D_px_effective REAL,
+              D_mm_effective REAL,
+              W_axis_effective_px REAL,
+              W_axis_effective_mm REAL,
+              ID_effective REAL,
+
+              measured_overlap REAL,
+              required_overlap REAL,
+              hit_valid INTEGER,
+
+              touch_x REAL,
+              touch_y REAL,
+              touch_diameter_px REAL,
+              touch_radius_px REAL,
+              touch_diameter_px_session REAL,
+              touch_diameter_mm_session REAL,
+
+              prev_x REAL,
+              prev_y REAL,
+              x REAL,
+              y REAL,
+              placed TEXT,
 
               mt_ms REAL,
               errors INTEGER,
               error_reasons TEXT,
               clicks_before_hit INTEGER,
+
+              ua TEXT,
+              platform TEXT,
+              mobile_ua INTEGER,
+              screen_w INTEGER,
+              screen_h INTEGER,
+              viewport_w INTEGER,
+              viewport_h INTEGER,
+              dpr REAL,
+              touch_support INTEGER,
+              max_touch_points INTEGER,
+              pointer_coarse INTEGER,
+              pointer_fine INTEGER,
+              hover_capable INTEGER,
+              hardware_concurrency INTEGER,
+              device_memory_gb REAL,
+              prefers_reduced_motion INTEGER,
+              language TEXT,
+              timezone TEXT,
 
               FOREIGN KEY(session_id) REFERENCES session(id)
             )
@@ -199,37 +271,12 @@ def init_db() -> None:
 
 def ensure_columns() -> None:
     """
-    Lightweight migrations: add columns if missing.
+    Kept for compatibility with app startup.
 
-    SQLite supports ADD COLUMN but not DROP/ALTER of existing columns.
-    This function is intended to keep the schema compatible across iterations.
+    No automatic ALTER TABLE migration is performed here by design.
+    Use a fresh database or run a manual migration when the schema changes.
     """
-    with db() as conn:
-        cur = conn.cursor()
-
-        # ---- session table migrations ----
-        cur.execute("PRAGMA table_info(session)")
-        session_cols = {row["name"] for row in cur.fetchall()}
-        if "device_context_json" not in session_cols:
-            cur.execute("ALTER TABLE session ADD COLUMN device_context_json TEXT")
-
-        # ---- trial table migrations ----
-        cur.execute("PRAGMA table_info(trial)")
-        trial_cols = {row["name"] for row in cur.fetchall()}
-
-        # Target geometry metadata
-        if "target_shape" not in trial_cols:
-            cur.execute("ALTER TABLE trial ADD COLUMN target_shape TEXT")
-        if "target_bbox_left" not in trial_cols:
-            cur.execute("ALTER TABLE trial ADD COLUMN target_bbox_left REAL")
-        if "target_bbox_top" not in trial_cols:
-            cur.execute("ALTER TABLE trial ADD COLUMN target_bbox_top REAL")
-        if "target_bbox_w" not in trial_cols:
-            cur.execute("ALTER TABLE trial ADD COLUMN target_bbox_w REAL")
-        if "target_bbox_h" not in trial_cols:
-            cur.execute("ALTER TABLE trial ADD COLUMN target_bbox_h REAL")
-        if "target_hit_geom_json" not in trial_cols:
-            cur.execute("ALTER TABLE trial ADD COLUMN target_hit_geom_json TEXT")
+    return None
 
 
 # ---------------- Export SQL ----------------
@@ -237,14 +284,34 @@ def ensure_columns() -> None:
 CSV_SELECT = """
   SELECT
     p.participant_id,
+
     s.session_code,
     s.started_at,
     s.is_demo,
+    s.session_comment,
+    s.protocol_name,
+    s.protocol_comment,
+    s.protocol_json,
+
+    s.monte_carlo_summary_json,
+    s.monte_carlo_warning_count,
+    s.monte_carlo_worst_clamp_pct,
+    s.monte_carlo_worst_diagnostic,
+    s.monte_carlo_mean_clamped_min_pct,
+    s.monte_carlo_mean_clamped_max_pct,
+
     s.unit,
     s.formula,
     s.timeout_ms,
     s.trial_count,
+    s.interactions_per_trial,
+
     s.target_shape,
+    s.param_mode,
+    s.required_overlap,
+    s.touch_diameter_px,
+    s.touch_diameter_mm,
+
     s.mm_per_px,
     s.viewport_w,
     s.viewport_h,
@@ -254,37 +321,100 @@ CSV_SELECT = """
 
     t.trial_no,
     t.timestamp_iso,
+    t.interaction_no,
+    t.active_target_key,
+    t.interactions_per_trial,
+    t.trial_summary,
+
+    t.unit,
+    t.formula,
+    t.shape,
     t.target_shape,
-    t.target_bbox_left,
-    t.target_bbox_top,
-    t.target_bbox_w,
-    t.target_bbox_h,
+
+    t.param_mode,
+    t.random_A,
+    t.random_W,
+    t.random_ID,
+
+    t.target_x,
+    t.target_y,
+    t.target_width_px,
+    t.target_height_px,
+
     t.target_hit_geom_json,
+
     t.A_in,
     t.W_in,
     t.ID_in,
+
     t.A_px_planned,
     t.W_px,
+    t.W_axis_planned_px,
+
     t.A_mm_planned,
     t.W_mm,
+    t.W_axis_planned_mm,
+
     t.ID_planned,
+
+    t.axis_planned_c_x,
+    t.axis_planned_c_y,
+    t.axis_planned_d_x,
+    t.axis_planned_d_y,
+
     t.D_px_effective,
     t.D_mm_effective,
+    t.W_axis_effective_px,
+    t.W_axis_effective_mm,
     t.ID_effective,
+
+    t.measured_overlap,
+    t.required_overlap,
+    t.hit_valid,
+
+    t.touch_x,
+    t.touch_y,
+    t.touch_diameter_px,
+    t.touch_radius_px,
+    t.touch_diameter_px_session,
+    t.touch_diameter_mm_session,
+
     t.prev_x,
     t.prev_y,
     t.x,
     t.y,
     t.placed,
+
     t.mt_ms,
     t.errors,
     t.error_reasons,
-    t.clicks_before_hit
+    t.clicks_before_hit,
+
+    t.ua,
+    t.platform,
+    t.mobile_ua,
+    t.screen_w,
+    t.screen_h,
+    t.viewport_w,
+    t.viewport_h,
+    t.dpr,
+    t.touch_support,
+    t.max_touch_points,
+    t.pointer_coarse,
+    t.pointer_fine,
+    t.hover_capable,
+    t.hardware_concurrency,
+    t.device_memory_gb,
+    t.prefers_reduced_motion,
+    t.language,
+    t.timezone
+
   FROM participant p
   JOIN session s ON s.participant_id = p.participant_id
   JOIN trial t ON t.session_id = s.id
   ORDER BY
     p.participant_id ASC,
     s.session_code ASC,
-    t.trial_no ASC
+    t.trial_no ASC,
+    t.interaction_no ASC
 """
