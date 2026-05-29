@@ -27,9 +27,57 @@ import { runMonteCarloProtocol } from "./modules/monteCarlo.js";
 
 import * as dbg from "./debug/debug.js";
 
+import {
+  loadAdminSettings,
+  saveAdminSettings,
+  clearAdminSettings,
+} from "./core/adminSettings.js";
+
 /**
  * Refresh touchability status labels in the start screen.
  */
+
+function initAdminSettingsUI(dom, ui) {
+  const panel = document.getElementById("adminSettingsPanel");
+
+  function fill() {
+    const s = loadAdminSettings();
+
+    document.getElementById("adminMinVisibleTargetPx").value = s.minVisibleTargetPx;
+    document.getElementById("adminTouchSafetyFactor").value = s.touchSafetyFactor;
+    document.getElementById("adminMaxTargetSizeRatio").value = s.maxTargetSizeRatio;
+    document.getElementById("adminMinAmplitudeMarginPx").value = s.minAmplitudeMarginPx;
+    document.getElementById("adminDefaultRequiredOverlap").value = s.defaultRequiredOverlap;
+  }
+
+  document.getElementById("btnAdminSettings")?.addEventListener("click", () => {
+    fill();
+    ui.show(dom, "adminSettings");
+  });
+
+  document.getElementById("btnAdminClose")?.addEventListener("click", () => {
+    ui.show(dom, "start");
+  });
+
+  document.getElementById("btnAdminSave")?.addEventListener("click", () => {
+    saveAdminSettings({
+      minVisibleTargetPx: document.getElementById("adminMinVisibleTargetPx").value,
+      touchSafetyFactor: document.getElementById("adminTouchSafetyFactor").value,
+      maxTargetSizeRatio: document.getElementById("adminMaxTargetSizeRatio").value,
+      minAmplitudeMarginPx: document.getElementById("adminMinAmplitudeMarginPx").value,
+      defaultRequiredOverlap: document.getElementById("adminDefaultRequiredOverlap").value,
+    });
+
+    ui.show(dom, "start");
+  });
+
+  document.getElementById("btnAdminReset")?.addEventListener("click", () => {
+    clearAdminSettings();
+    fill();
+  });
+}
+
+
 function updateTouchabilityUi(dom) {
   const px = state.touchDiameterPx ?? DEFAULT_TOUCH_DIAMETER_PX;
   const mm = state.touchDiameterMm;
@@ -189,6 +237,7 @@ function boot() {
 
   const modules = initModules(dom);
 
+  initAdminSettingsUI(dom, ui);
   setupDebug(dom);
   restoreCalibration(dom);
   loadParticipantTouchability(dom);
@@ -547,7 +596,6 @@ function setupExperimentDesignHandlers(dom, sessionDesign) {
   
     renderMonteCarloSummary(dom, sim);
   
-    console.log("Monte Carlo protocol result:", sim);
   });
 
   dom.btnClearProtocol?.addEventListener("click", () => {

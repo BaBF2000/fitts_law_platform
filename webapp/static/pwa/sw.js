@@ -1,5 +1,5 @@
 // Increment this when you want to force-refresh cached assets (hard cache bust).
-const CACHE_VERSION = "v13";
+const CACHE_VERSION = "v15";
 const CACHE = `fitts-${CACHE_VERSION}`;
 
 // Handle messages from pages (e.g., update banner -> request immediate activation).
@@ -20,8 +20,10 @@ const PRECACHE = [
   "/static/javascript/main.js",
 
   // Core modules
+  "static/javascript/core/adminSettings.js",
   "/static/javascript/core/constants.js",
   "/static/javascript/core/device.js",
+  "/static/javascript/core/distributions.js",
   "/static/javascript/core/dom.js",
   "/static/javascript/core/geometry.js",
   "/static/javascript/core/helpers.js",
@@ -33,7 +35,10 @@ const PRECACHE = [
   // Experiment modules
   "/static/javascript/modules/calibration.js",
   "/static/javascript/modules/experiment.js",
+  "/static/javascript/modules/experimentConstraints.js",
   "/static/javascript/modules/fingerTouchability.js",
+  "/static/javascript/modules/monteCarlo.js",
+  "static/javascript/modules/parameterSampling.js",
   "/static/javascript/modules/protocol.js",
   "/static/javascript/modules/sessionDesign.js",
   "/static/javascript/modules/trialPairEngine.js",
@@ -41,12 +46,13 @@ const PRECACHE = [
 
   // Target modules
   "/static/javascript/targets/Target.js",
-  "/static/javascript/targets/TargetDebugOverlay.js",
   "/static/javascript/targets/TargetFactory.js",
   "/static/javascript/targets/TouchArea.js",
-  "/static/javascript/modules/monteCarlo.js",
+
   // Debug module
   "/static/javascript/debug/debug.js",
+  "static/javascript/targets/TargetDebugOverlay.js",
+  "/static/javascript/targets/TouchArea.js",
 
   // PWA entry (served by Flask route)
   "/manifest.webmanifest",

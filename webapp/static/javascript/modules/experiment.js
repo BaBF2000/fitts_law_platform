@@ -427,10 +427,9 @@ export function initExperiment(dom, state, ui, server) {
     const minApx = getMinAmplitudePx({
       shape: trialShape,
       targetSizePx: Wpx,
-      marginPx: 10,
     });
 
-    // Random A is sampled only within the safe range.
+    // Enforce the minimum safe amplitude after parameter sampling.
 
       Apx = Math.max(Apx, minApx);
 

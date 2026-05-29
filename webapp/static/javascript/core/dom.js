@@ -142,6 +142,8 @@ export function getDom() {
     btnSaveServer: $("btnSaveServer"),
     btnRestart: $("btnRestart"),
 
+    adminSettingsPanel: $("adminSettingsPanel"),
+
 
   };
 }

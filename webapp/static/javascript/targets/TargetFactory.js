@@ -72,14 +72,6 @@ export class TargetFactory {
     } else {
       target.y = clamp(target.y, minY, maxY);
     }
-    console.log("TargetFactory", {
-      shape,
-      sizePx,
-      widthPx: target.widthPx,
-      heightPx: target.heightPx,
-      x: target.x,
-      y: target.y,
-    });
     return target;
   }
 }

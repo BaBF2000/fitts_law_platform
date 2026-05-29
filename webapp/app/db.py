@@ -77,6 +77,12 @@ def db() -> sqlite3.Connection:
 
     return conn
 
+def csv_clean(value):
+    if value is None:
+        return ""
+    if str(value) in ("NaN", "nan", "Infinity", "-Infinity"):
+        return ""
+    return value
 
 def rows_to_csv_response(rows: Sequence[sqlite3.Row], filename: str) -> Response:
     """
@@ -90,7 +96,7 @@ def rows_to_csv_response(rows: Sequence[sqlite3.Row], filename: str) -> Response
         writer.writerow(header)
 
         for row in rows:
-            writer.writerow([row[h] for h in header])
+            writer.writerow([csv_clean(row[h]) for h in header])
 
     return Response(
         out.getvalue(),
@@ -134,6 +140,11 @@ def init_db() -> None:
               protocol_name TEXT,
               protocol_comment TEXT,
               protocol_json TEXT,
+
+              a_sampling TEXT,
+              w_sampling TEXT,
+              id_sampling TEXT,
+              admin_settings_json TEXT,
 
               monte_carlo_summary_json TEXT,
               monte_carlo_warning_count INTEGER,
@@ -305,6 +316,10 @@ CSV_SELECT = """
     s.timeout_ms,
     s.trial_count,
     s.interactions_per_trial,
+    s.admin_settings_json,
+    s.a_sampling,
+    s.w_sampling,
+    s.id_sampling,
 
     s.target_shape,
     s.param_mode,

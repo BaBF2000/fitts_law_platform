@@ -2,7 +2,11 @@ import {
   DEFAULT_TOUCH_DIAMETER_PX,
   MIN_VISIBLE_TARGET_PX,
   TOUCH_SAFETY_FACTOR,
+  MAX_TARGET_SIZE_RATIO,
+  MIN_AMPLITUDE_MARGIN_PX,
 } from "../core/constants.js";
+
+import { loadAdminSettings } from "../core/adminSettings.js";
 
 import { clamp, getViewportSize } from "../core/helpers.js";
 
@@ -26,10 +30,11 @@ export function getTouchDiameterPx(state) {
  */
 export function getMinTargetSizePx(state) {
   const touchDiameterPx = getTouchDiameterPx(state);
+  const admin = loadAdminSettings();
 
   return Math.max(
-    MIN_VISIBLE_TARGET_PX,
-    touchDiameterPx * TOUCH_SAFETY_FACTOR
+    admin.minVisibleTargetPx,
+    touchDiameterPx * admin.touchSafetyFactor
   );
 }
 
@@ -38,7 +43,9 @@ export function getMinTargetSizePx(state) {
  */
 export function getMaxTargetSizePx(overrideViewport = null) {
   const viewport = overrideViewport ?? getViewportSize();
-  return viewport.minSide * 0.25;
+  const admin = loadAdminSettings();
+
+  return viewport.minSide * admin.maxTargetSizeRatio;
 }
 
 /**
@@ -101,13 +108,21 @@ export function analyzeTargetSizeClamp(sizePx, state, overrideViewport = null) {
 export function getMinAmplitudePx({
   shape = "circle",
   targetSizePx,
-  marginPx = 10,
+  marginPx = null,
 } = {}) {
   if (!Number.isFinite(targetSizePx) || targetSizePx <= 0) {
     return NaN;
   }
+
+  const admin = loadAdminSettings();
+
+  const effectiveMarginPx =
+    Number.isFinite(marginPx)
+      ? marginPx
+      : admin.minAmplitudeMarginPx;
+
   if (shape === "band1d_h" || shape === "band1d_v") {
-    return targetSizePx + marginPx;
+    return targetSizePx + effectiveMarginPx;
   }
 
   const radius =
@@ -115,7 +130,7 @@ export function getMinAmplitudePx({
       ? targetSizePx / 2
       : (targetSizePx * Math.SQRT2) / 2;
 
-  return radius * 2 + marginPx;
+  return radius * 2 + effectiveMarginPx;
 }
 
 /**

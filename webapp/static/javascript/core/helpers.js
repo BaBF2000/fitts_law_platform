@@ -230,13 +230,16 @@ export function placeTarget(prevX, prevY, Dpx, newRadiusPx, prevRadiusPx = newRa
  *
  * The first row defines the column order.
  */
+
 export function toCSV(rows) {
   if (!rows.length) return "";
 
   const cols = Object.keys(rows[0]);
 
   const esc = (v) => {
+    if (typeof v === "number" && !Number.isFinite(v)) return "";
     if (v === null || v === undefined) return "";
+  
     const s = String(v);
     return /[,"\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
   };

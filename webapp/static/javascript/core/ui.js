@@ -14,6 +14,7 @@ import { setFullscreenEnforcement, setWakeLock } from "./helpers.js";
  *  - Enforce fullscreen + keep screen awake only while the experiment is running
  *    (end screen included so participants can safely export/save without dimming).
  *  - Do not enforce on start or calibration screens.
+ *  - "adminSettings": advanced experiment constraints
  *
  * Note: UI text is German by design; do not translate user-facing strings here.
  */
@@ -31,6 +32,11 @@ export function show(dom, which) {
   if (dom.touchabilityPanel) {
     dom.touchabilityPanel.style.display =
       which === "touchability" ? "flex" : "none";
+  }
+
+  if (dom.adminSettingsPanel) {
+    dom.adminSettingsPanel.style.display =
+      which === "adminSettings" ? "flex" : "none";
   }
 
   if (dom.endPanel) {

@@ -14,6 +14,8 @@
 
 import { runMonteCarloProtocol } from "./monteCarlo.js";
 
+import { loadAdminSettings } from "../core/adminSettings.js";
+
 function blockTemplate(idx, b) {
   const id = (s) => `blk_${idx}_${s}`;
   const shape = b.shape ?? "circle";
@@ -105,6 +107,7 @@ function blockTemplate(idx, b) {
 }
 
 function defaultBlock() {
+  const admin = loadAdminSettings();
   return {
     shape: "circle",
     param_mode: "A_W",
@@ -117,7 +120,7 @@ function defaultBlock() {
     random_W: false,
     random_ID: false,
 
-    required_overlap: "1.0",
+   required_overlap: String(admin.defaultRequiredOverlap),
   };
 }
 

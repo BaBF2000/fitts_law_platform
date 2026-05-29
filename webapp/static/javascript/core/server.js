@@ -3,6 +3,7 @@
  */
 
 import { getDeviceContext } from "./device.js";
+import { loadAdminSettings } from "./adminSettings.js";
 
 /**
  * Send the completed experiment results to the Flask backend.
@@ -14,12 +15,9 @@ export async function sendResultsToPC(dom, state) {
 
   const firstRow = state.results[0] ?? {};
 
-  // Session-level device context.
-  // Kept in a dedicated helper to avoid inconsistencies across modules.
   const deviceContext = getDeviceContext();
+  const adminSettings = loadAdminSettings();
 
-  // Session-level metadata.
-  // Trial-specific values remain in the result rows.
   const meta = {
     participant_id: dom.participantId?.value?.trim() || "P",
     session_id: dom.sessionId?.value?.trim() || "S",
@@ -32,26 +30,32 @@ export async function sendResultsToPC(dom, state) {
     protocol_json: state.currentProtocol
       ? JSON.stringify(state.currentProtocol)
       : null,
-    
+
+    a_sampling: state.currentProtocol?.a_sampling ?? null,
+    w_sampling: state.currentProtocol?.w_sampling ?? null,
+    id_sampling: state.currentProtocol?.id_sampling ?? null,
+
+    admin_settings_json: JSON.stringify(adminSettings),
+
     monte_carlo_summary_json: state.currentProtocol?.monte_carlo_summary
       ? JSON.stringify(state.currentProtocol.monte_carlo_summary)
       : null,
-    
+
     monte_carlo_warning_count:
       state.currentProtocol?.monte_carlo_summary?.warning_count ?? null,
-    
+
     monte_carlo_worst_clamp_pct:
       state.currentProtocol?.monte_carlo_summary?.worst_clamp_pct ?? null,
-    
+
     monte_carlo_worst_diagnostic:
       state.currentProtocol?.monte_carlo_summary?.worst_diagnostic ?? null,
-    
+
     monte_carlo_mean_clamped_min_pct:
       state.currentProtocol?.monte_carlo_summary?.mean_clamped_min_pct ?? null,
-    
+
     monte_carlo_mean_clamped_max_pct:
       state.currentProtocol?.monte_carlo_summary?.mean_clamped_max_pct ?? null,
-      
+
     unit: dom.distanceMode?.value || firstRow.unit || null,
     formula: firstRow.formula || "shannon",
     timeout_ms: Number(dom.timeoutMs?.value) || 0,

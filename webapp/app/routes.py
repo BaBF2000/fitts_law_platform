@@ -241,6 +241,7 @@ def save_results():
         "protocol_name": meta.get("protocol_name"),
         "protocol_comment": meta.get("protocol_comment"),
         "protocol_json": meta.get("protocol_json"),
+        "admin_settings_json": meta.get("admin_settings_json"),
 
         "monte_carlo_summary_json": meta.get("monte_carlo_summary_json"),
         "monte_carlo_warning_count": meta.get("monte_carlo_warning_count"),
@@ -248,6 +249,9 @@ def save_results():
         "monte_carlo_worst_diagnostic": meta.get("monte_carlo_worst_diagnostic"),
         "monte_carlo_mean_clamped_min_pct": meta.get("monte_carlo_mean_clamped_min_pct"),
         "monte_carlo_mean_clamped_max_pct": meta.get("monte_carlo_mean_clamped_max_pct"),
+        "a_sampling": meta.get("a_sampling"),
+        "w_sampling": meta.get("w_sampling"),
+        "id_sampling": meta.get("id_sampling"),
 
         "unit": meta.get("unit"),
         "formula": meta.get("formula"),
@@ -602,6 +606,9 @@ def dashboard():
         <input id="q" placeholder="Teilnehmer suchen..." />
 
         <div class="card">
+          <p>
+                <a href="/dashboard/montecarlo{qs}">Monte Carlo Analyse öffnen</a>
+          </p>
           <table>
             <thead>
               <tr>
@@ -613,9 +620,7 @@ def dashboard():
             </thead>
             <tbody>
               {''.join(rows_html) if rows_html else '<tr><td colspan="4">Keine Daten.</td></tr>'}
-              <p>
-                <a href="/dashboard/montecarlo{qs}">Monte Carlo Analyse öffnen</a>
-              </p>
+              
             </tbody>
           </table>
         </div>
@@ -1392,6 +1397,48 @@ def dashboard_montecarlo():
           </table>
         </div>
 
+        <h2>Blöcke des geladenen Protokolls</h2>
+        <h2>Monte-Carlo-Diagnose pro Block</h2>
+        <div class="card tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Block</th>
+                <th>Form</th>
+                <th>Modus</th>
+                <th>Clamp min</th>
+                <th>Clamp max</th>
+                <th>Clamp total</th>
+                <th>Diagnose</th>
+              </tr>
+            </thead>
+            <tbody id="blockDiagnosticsRows">
+              <tr><td colspan="7">Kein Protokoll geladen.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Block</th>
+                <th>Form</th>
+                <th>Modus</th>
+                <th>A</th>
+                <th>W</th>
+                <th>ID</th>
+                <th>Overlap</th>
+                <th>A-Verteilung</th>
+                <th>W-Verteilung</th>
+                <th>ID-Verteilung</th>
+              </tr>
+            </thead>
+            <tbody id="protocolBlocksRows">
+              <tr><td colspan="10">Kein Protokoll geladen.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
         <div class="card">
           <div class="controls">
             <div>
@@ -1405,12 +1452,32 @@ def dashboard_montecarlo():
             </div>
 
             <div>
-              <label>Sampling</label>
-              <select id="sampling">
+              <label>A-Verteilung</label>
+              <select id="aSampling">
                 <option value="uniform">Uniform</option>
-                <option value="truncated_uniform">Safe uniform</option>
-                <option value="normal">Centered normal</option>
-                <option value="truncated_normal">Truncated normal</option>
+                <option value="truncated_uniform">Uniform trunkiert</option>
+                <option value="normal">Normal</option>
+                <option value="truncated_normal">Normal trunkiert</option>
+              </select>
+            </div>
+            
+            <div>
+              <label>W-Verteilung</label>
+              <select id="wSampling">
+                <option value="uniform">Uniform</option>
+                <option value="truncated_uniform">Uniform trunkiert</option>
+                <option value="normal">Normal</option>
+                <option value="truncated_normal">Normal trunkiert</option>
+              </select>
+            </div>
+            
+            <div>
+              <label>ID-Verteilung</label>
+              <select id="idSampling">
+                <option value="uniform">Uniform</option>
+                <option value="truncated_uniform">Uniform trunkiert</option>
+                <option value="normal">Normal</option>
+                <option value="truncated_normal">Normal trunkiert</option>
               </select>
             </div>
 
@@ -1512,7 +1579,7 @@ def dashboard_montecarlo():
           <div id="cdf"></div>
         </div>
 
-        <h2>Alternative Sampling Profiles</h2>
+        <h2>Alternative W-Sampling-Profile</h2>
         <div class="grid" id="profileGrid"></div>
 
         <h2>Beispiel-Tabelle</h2>
@@ -1521,7 +1588,7 @@ def dashboard_montecarlo():
             <thead>
               <tr>
                 <th>#</th>
-                <th>Sampling</th>
+                <th>A / W / ID Sampling</th>
                 <th>A px</th>
                 <th>W planned px</th>
                 <th>W effective px</th>
@@ -1536,7 +1603,7 @@ def dashboard_montecarlo():
         </div>
 
         <script type="module">
-          import {{ runMonteCarloW }} from "/static/javascript/modules/monteCarlo.js";
+          import {{ runMonteCarloW,  runMonteCarloProtocol, }} from "/static/javascript/modules/monteCarlo.js";
 
           let loadedProtocol = null;
 
@@ -1553,8 +1620,58 @@ def dashboard_montecarlo():
             `;
           }}
 
+          function renderBlockDiagnostics(protocol) {{
+            const viewportW = val("viewportW") || window.innerWidth;
+            const viewportH = val("viewportH") || window.innerHeight;
+          
+            const result = runMonteCarloProtocol({{
+              protocol,
+              n: Math.max(100, Math.min(100000, val("n") || 50000)),
+              histogramBins: val("histogramBins") || 100,
+              overrideViewport: {{
+                width: viewportW,
+                height: viewportH,
+                minSide: Math.min(viewportW, viewportH),
+              }},
+              state: {{
+                touchDiameterPx: val("touchPx") || 40,
+                mmPerPx: null,
+              }},
+            }});
+          
+            document.getElementById("blockDiagnosticsRows").innerHTML =
+              result.blocks.length
+                ? result.blocks.map((item) => {{
+                    const c = item.result.counts;
+                    const d = item.result.summary.diagnostic;
+
+                    const diagClass =
+                      d === "strong_distortion"
+                        ? "diag-high"
+                        : d === "moderate_distortion"
+                          ? "diag-medium"
+                          : "diag-low";
+          
+                    return `
+                      <tr>
+                        <td>${{item.block_no}}</td>
+                        <td>${{item.shape}}</td>
+                        <td>${{item.param_mode}}</td>
+                        <td>${{c.clamped_min_pct.toFixed(2)}}%</td>
+                        <td>${{c.clamped_max_pct.toFixed(2)}}%</td>
+                        <td>${{c.clamped_total_pct.toFixed(2)}}%</td>
+                        <td><span class="${{diagClass}}">${{d}}</span></td>
+                      </tr>
+                    `;
+                  }}).join("")
+                : `<tr><td colspan="7">Keine Blöcke im Protokoll.</td></tr>`;
+          }}
+
           function applyProtocolToControls(protocol, blockIndex = 0) {{
             loadedProtocol = protocol;
+
+            renderProtocolBlocks(protocol);
+            renderBlockDiagnostics(protocol);
 
             const blocks = protocol.sessionBlocks || [];
             const block = blocks[blockIndex];
@@ -1569,8 +1686,14 @@ def dashboard_montecarlo():
           
             blockSelect.value = String(blockIndex);
           
-            document.getElementById("sampling").value =
+            document.getElementById("aSampling").value =
+              protocol.a_sampling || "uniform";
+            
+            document.getElementById("wSampling").value =
               protocol.w_sampling || "uniform";
+            
+            document.getElementById("idSampling").value =
+              protocol.id_sampling || "uniform";
           
             document.getElementById("mode").value =
               block.param_mode || "A_W";
@@ -1618,6 +1741,27 @@ def dashboard_montecarlo():
               }});
           }});
 
+          function renderProtocolBlocks(protocol) {{
+            const rows = protocol.sessionBlocks || [];
+          
+            document.getElementById("protocolBlocksRows").innerHTML = rows.length
+              ? rows.map((b, index) => `
+                <tr>
+                  <td>${{index + 1}}</td>
+                  <td>${{b.shape || "circle"}}</td>
+                  <td>${{b.param_mode || "A_W"}}</td>
+                  <td>${{b.dist_entered ?? "—"}}</td>
+                  <td>${{b.width_entered ?? "—"}}</td>
+                  <td>${{b.id_entered ?? "—"}}</td>
+                  <td>${{b.required_overlap ?? "1.0"}}</td>
+                  <td>${{protocol.a_sampling || "uniform"}}</td>
+                  <td>${{protocol.w_sampling || "uniform"}}</td>
+                  <td>${{protocol.id_sampling || "uniform"}}</td>
+                </tr>
+              `).join("")
+              : `<tr><td colspan="10">Keine Blöcke im Protokoll.</td></tr>`;
+          }}
+
           function getSimulationConfig(samplingOverride = null) {{
             const viewportW = val("viewportW") || window.innerWidth;
             const viewportH = val("viewportH") || window.innerHeight;
@@ -1631,7 +1775,9 @@ def dashboard_montecarlo():
               WRange: [val("wMin"), val("wMax")],
               IDRange: [val("idMin"), val("idMax")],
               requiredOverlap: val("overlap") || 1,
-              sampling: samplingOverride || document.getElementById("sampling").value,
+              aSampling: document.getElementById("aSampling").value,
+              wSampling: samplingOverride || document.getElementById("wSampling").value,
+              idSampling: document.getElementById("idSampling").value,
               histogramBins: val("histogramBins") || 100,
               overrideViewport: {{
                 width: viewportW,
@@ -1764,7 +1910,9 @@ def dashboard_montecarlo():
               kpi("W max", `${{m.max_target_px.toFixed(1)}} px`),
               kpi("Mode", m.mode),
               kpi("Samples", c.total),
-              kpi("Sampling", m.sampling),
+              kpi("A Sampling", m.a_sampling),
+              kpi("W Sampling", m.w_sampling),
+              kpi("ID Sampling", m.id_sampling),
             ].join("");
 
             document.getElementById("statsGrid").innerHTML = [
@@ -1786,7 +1934,7 @@ def dashboard_montecarlo():
               sim.rows.slice(0, 120).map((r) => `
                 <tr>
                   <td>${{r.index}}</td>
-                  <td>${{r.sampling}}</td>
+                  <td>${{r.a_sampling}} / ${{r.w_sampling}} / ${{r.id_sampling}} </td>
                   <td>${{Number.isFinite(r.A_px) ? r.A_px.toFixed(1) : "—"}}</td>
                   <td>${{r.W_px_planned.toFixed(1)}}</td>
                   <td>${{r.W_px_effective.toFixed(1)}}</td>
