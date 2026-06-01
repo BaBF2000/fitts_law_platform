@@ -1,3 +1,31 @@
+/**
+ * Global application state.
+ *
+ * Organigram reference:
+ * - Core State
+ *   → Calibration State
+ *   → Protocol State
+ *   → Experiment Runtime State
+ *   → Persistence State
+ *
+ * Responsibility:
+ * Stores the mutable runtime state shared across the application.
+ *
+ * Important:
+ * This object should only contain state values.
+ * Business logic belongs in dedicated modules, for example:
+ * - calibration.js
+ * - sessionDesign.js
+ * - trialParameters.js
+ * - experiment.js
+ * - experimentRuntime.js
+ *
+ * Extension guide:
+ * - Add new state values only when they must be shared across modules.
+ * - Prefer local variables for temporary implementation details.
+ * - Group new values under a clearly named section.
+ */
+
 export const state = {
   // ------------------------------------------------------------
   // Calibration
@@ -130,7 +158,7 @@ export const state = {
   savedSessionRowId: null,
 
   // ------------------------------------------------------------
-  // Legacy calibration drag state
+  // Calibration UI drag state
   // ------------------------------------------------------------
 
   // Drag state used by the calibration UI.

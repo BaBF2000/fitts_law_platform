@@ -1,14 +1,32 @@
 /**
  * Centralized DOM access layer.
  *
- * All document.getElementById calls are grouped here in order to:
- *   - Avoid selector duplication
- *   - Prevent ID typos across modules
- *   - Keep UI dependencies explicit and maintainable
+ * Organigram reference:
+ * - Core
+ *   → DOM Registry
+ * - UI Layer
+ *   → Panel Management
+ *   → User Interaction
  *
- * This module does not modify the DOM.
- * It only exposes references to existing DOM elements.
+ * Responsibility:
+ * Provides a single source of truth for DOM element references.
+ *
+ * All document.getElementById calls are centralized here to:
+ * - avoid selector duplication
+ * - prevent ID typos
+ * - simplify maintenance
+ * - make UI dependencies explicit
+ *
+ * Important:
+ * This module must not contain UI logic.
+ * It only returns references to existing DOM elements.
+ *
+ * Extension guide:
+ * - Add new UI elements here before using them elsewhere.
+ * - Prefer the helper function $() for consistency.
+ * - Keep elements grouped by UI area.
  */
+
 
 import { $ } from "./helpers.js";
 
@@ -131,9 +149,9 @@ export function getDom() {
     // ------------------------------------------------------------
     protocolName: $("protocolName"),
     protocolComment: $("protocolComment"),
-    aSampling: document.getElementById("aSampling"),
-    wSampling: document.getElementById("wSampling"),
-    idSampling: document.getElementById("idSampling"),
+    aSampling: $("aSampling"),
+    wSampling: $("wSampling"),
+    idSampling: $("idSampling"),
     
     // ------------------------------------------------------------
     // End panel actions
@@ -142,6 +160,9 @@ export function getDom() {
     btnSaveServer: $("btnSaveServer"),
     btnRestart: $("btnRestart"),
 
+    // ------------------------------------------------------------
+    // Admin settings
+    // ------------------------------------------------------------
     adminSettingsPanel: $("adminSettingsPanel"),
 
 

@@ -155,7 +155,7 @@ export class TargetFactory {
     const safeSize =
       Number.isFinite(sizePx) && sizePx > 0
         ? sizePx
-        : 40;
+        : DEFAULT_TOUCH_DIAMETER_PX;
 
     const shaped =
       applyShapeRules({

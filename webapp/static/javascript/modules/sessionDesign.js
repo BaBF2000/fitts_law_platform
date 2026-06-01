@@ -1,128 +1,49 @@
 /**
- * Experiment design editor module.
+ * Experiment design editor orchestrator.
  *
- * Handles the block-based protocol editor:
- * - target shape selection
- * - parameter mode selection (A/W/ID)
- * - fixed values, lists and random sampling flags
- * - required overlap configuration
- * - trial count validation
+ * Organigram reference:
+ * - Experiment Design
+ *   → Session Block Editor
+ *   → Protocol Drafting
  *
- * This module only edits the protocol definition.
- * Trial generation and scientific validation are handled later.
+ * Responsibility:
+ * Coordinates the block-based protocol editor UI.
+ *
+ * This module connects smaller helpers responsible for:
+ * - rendering one block template
+ * - reading block values from the DOM
+ * - enabling/disabling fields depending on parameter mode
+ * - warning about Monte Carlo constraint distortion
+ *
+ * Important:
+ * This module edits the protocol definition only.
+ * It does not generate runtime trials or validate final experiment results.
+ *
+ * Extension guide:
+ * - To change block HTML: edit sessionBlockTemplate.js.
+ * - To change block DOM reading or field activation: edit sessionBlockState.js.
+ * - To change Monte Carlo warnings: edit sessionWarnings.js.
  */
 
-import { runMonteCarloProtocol } from "./monteCarlo.js";
+import {
+  blockTemplate,
+} from "./sessionDesign/sessionBlockTemplate.js";
+
+import {
+  defaultBlock,
+  readBlockFromDOM,
+  updateBlockFieldState,
+} from "./sessionDesign/sessionBlockState.js";
+
+import {
+  confirmMonteCarloWarnings,
+} from "./sessionDesign/sessionWarnings.js";
+
 
 import { loadAdminSettings } from "../core/adminSettings.js";
 
-function blockTemplate(idx, b) {
-  const id = (s) => `blk_${idx}_${s}`;
-  const shape = b.shape ?? "circle";
-  const requiredOverlap = b.required_overlap ?? "1.0";
 
-  return `
-  <div class="sessionBlock" data-idx="${idx}">
-    <div class="row">
-      <div>
-        <label>Zielform</label>
-        <select id="${id("shape")}">
-          <option value="circle" ${shape === "circle" ? "selected" : ""}>Kreis</option>
-          <option value="square" ${shape === "square" ? "selected" : ""}>Quadrat</option>
-          <option value="triangle" ${shape === "triangle" ? "selected" : ""}>Dreieck</option>
-          <option value="pentagon" ${shape === "pentagon" ? "selected" : ""}>Fünfeck</option>
-          <option value="hexagon" ${shape === "hexagon" ? "selected" : ""}>Sechseck</option>
-          <option value="octagon" ${shape === "octagon" ? "selected" : ""}>Achteck</option>
-          <option value="diamond" ${shape === "diamond" ? "selected" : ""}>Raute</option>
-          <option value="shuffle" ${shape === "shuffle" ? "selected" : ""}>Zufällig / Shuffle</option>
-          <option value="band1d_h" ${shape === "band1d_h" ? "selected" : ""}>1D Band horizontal</option>
-          <option value="band1d_v" ${shape === "band1d_v" ? "selected" : ""}>1D Band vertikal</option>
-        </select>
-      </div>
 
-      <div>
-        <label>Parametermodus</label>
-        <select id="${id("param_mode")}">
-          <option value="A_W" ${b.param_mode === "A_W" ? "selected" : ""}>A + W</option>
-          <option value="ID_W" ${b.param_mode === "ID_W" ? "selected" : ""}>ID + W</option>
-          <option value="ID_A" ${b.param_mode === "ID_A" ? "selected" : ""}>ID + A</option>
-        </select>
-      </div>
-
-      <div>
-        <label class="fieldLabel">
-          <span>A</span>
-        
-          <button
-            type="button"
-            id="${id("random_A")}"
-            class="randomToggle"
-            data-active="${b.random_A ? "1" : "0"}"
-            title="Random A">
-          </button>
-        </label>
-        <input id="${id("dist")}" type="text" value="${b.dist_entered ?? "0.50"}" placeholder="0.5 oder [0.1,0.3,0.5]"> 
-      </div>
-      
-      <div>
-        <label class="fieldLabel">
-          <span>W</span>
-        
-          <button
-            type="button"
-            id="${id("random_W")}"
-            class="randomToggle"
-            data-active="${b.random_W ? "1" : "0"}"
-            title="Random W">
-          </button>
-        </label>
-        <input id="${id("width")}" type="text" value="${b.width_entered ?? "0.05"}" placeholder="0.05 oder [0.03,0.05]">  
-      </div>
-      
-      <div>
-        <label class="fieldLabel">
-          <span>ID</span>
-        
-          <button
-            type="button"
-            id="${id("random_ID")}"
-            class="randomToggle"
-            data-active="${b.random_ID ? "1" : "0"}"
-            title="Random ID">
-          </button>
-        </label>
-        <input id="${id("id")}" type="text" value="${b.id_entered ?? "5"}" placeholder="5 oder [3,4,5,6]">
-        
-      </div>
-
-      <div>
-        <label>Required Overlap</label>
-        <input id="${id("required_overlap")}" type="number" min="0" max="1" step="0.05" value="${requiredOverlap}">
-      </div>
-
-      <button type="button" id="${id("remove")}">Entfernen</button>
-    </div>
-  </div>
-  `;
-}
-
-function defaultBlock() {
-  const admin = loadAdminSettings();
-  return {
-    shape: "circle",
-    param_mode: "A_W",
-
-    dist_entered: "0.50",
-    width_entered: "0.05",
-    id_entered: "5",
-
-    random_A: false,
-    random_W: false,
-    random_ID: false,
-
-   required_overlap: String(admin.defaultRequiredOverlap),
-  };
-}
 
 export function initSessionDesign(dom, state) {
   const sessionPanel = document.getElementById("sessionConfigPanel");
@@ -145,21 +66,7 @@ export function initSessionDesign(dom, state) {
     const newBlocks = [];
 
     for (let i = 0; i < nodes.length; i++) {
-      newBlocks.push({
-        shape: document.getElementById(`blk_${i}_shape`)?.value ?? "circle",
-        param_mode: document.getElementById(`blk_${i}_param_mode`)?.value ?? "A_W",
-      
-        dist_entered: document.getElementById(`blk_${i}_dist`)?.value ?? "",
-        width_entered: document.getElementById(`blk_${i}_width`)?.value ?? "",
-        id_entered: document.getElementById(`blk_${i}_id`)?.value ?? "",
-      
-        random_A: document.getElementById(`blk_${i}_random_A`)?.dataset.active === "1",
-        random_W: document.getElementById(`blk_${i}_random_W`)?.dataset.active === "1",
-        random_ID: document.getElementById(`blk_${i}_random_ID`)?.dataset.active === "1",
-      
-        required_overlap:
-          document.getElementById(`blk_${i}_required_overlap`)?.value ?? "1.0",
-      });
+      newBlocks.push(readBlockFromDOM(i));
     }
 
     state.sessionBlocks = newBlocks;
@@ -167,61 +74,6 @@ export function initSessionDesign(dom, state) {
   }
   
 
-  function isListInput(value) {
-    const raw = (value ?? "").toString().trim();
-    return raw.startsWith("[") && raw.endsWith("]");
-  }
-  
-  function setRandomButtonState(btn, enabled, active) {
-    if (!btn) return;
-  
-    btn.disabled = !enabled;
-    btn.dataset.active = enabled && active ? "1" : "0";
-  }
-  
-  function updateBlockFieldState(i) {
-    const mode = document.getElementById(`blk_${i}_param_mode`)?.value ?? "A_W";
-  
-    const fields = {
-      A: document.getElementById(`blk_${i}_dist`),
-      W: document.getElementById(`blk_${i}_width`),
-      ID: document.getElementById(`blk_${i}_id`),
-    };
-  
-    const buttons = {
-      A: document.getElementById(`blk_${i}_random_A`),
-      W: document.getElementById(`blk_${i}_random_W`),
-      ID: document.getElementById(`blk_${i}_random_ID`),
-    };
-  
-    const activeByMode = {
-      A_W: ["A", "W"],
-      ID_W: ["ID", "W"],
-      ID_A: ["ID", "A"],
-    };
-  
-    const enabledFields = activeByMode[mode] ?? ["A", "W"];
-  
-    for (const key of ["A", "W", "ID"]) {
-      const input = fields[key];
-      const btn = buttons[key];
-  
-      const fieldEnabled = enabledFields.includes(key);
-      const hasList = isListInput(input?.value);
-  
-      if (input) {
-        input.disabled = !fieldEnabled;
-        input.style.opacity = fieldEnabled ? "1" : "0.45";
-        input.style.backgroundColor = fieldEnabled ? "" : "#e5e7eb";
-        input.style.cursor = fieldEnabled ? "" : "not-allowed";
-      }
-  
-      const randomEnabled = fieldEnabled && !hasList;
-      const randomActive = btn?.dataset.active === "1";
-  
-      setRandomButtonState(btn, randomEnabled, randomActive);
-    }
-  }
 
   function renderBlocks({ allowEmpty = false } = {}) {
     if (!blocksContainer) return;
@@ -294,35 +146,13 @@ export function initSessionDesign(dom, state) {
   function checkWClampBeforeApply() {
     applyBlocksFromUI();
   
-    const protocol = {
-      distanceMode: document.getElementById("distanceMode")?.value ?? "relative",
-      a_sampling: document.getElementById("aSampling")?.value ?? "uniform",
-      w_sampling: document.getElementById("wSampling")?.value ?? "uniform",
-      id_sampling: document.getElementById("idSampling")?.value ?? "uniform",
-      sessionBlocks: state.sessionBlocks ?? [],
-    };
-  
-    const sim = runMonteCarloProtocol({
-      protocol,
+    return confirmMonteCarloWarnings({
       state,
-      n: 1000,
-      histogramBins: 50,
+      distanceMode: dom.distanceMode?.value ?? "relative",
+      aSampling: dom.aSampling?.value ?? "uniform",
+      wSampling: dom.wSampling?.value ?? "uniform",
+      idSampling: dom.idSampling?.value ?? "uniform",
     });
-  
-    const warnings = sim.meta?.warnings ?? [];
-  
-    if (!warnings.length) {
-      return true;
-    }
-  
-    const message =
-      "Monte-Carlo-Warnung:\n\n" +
-      warnings
-        .map((w) => `Block ${w.block_no}: ${w.message}`)
-        .join("\n\n") +
-      "\n\nTrotzdem übernehmen?";
-  
-    return confirm(message);
   }
 
   function close() {

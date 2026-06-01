@@ -1,18 +1,35 @@
 /**
- * Finger touchability measurement module.
+ * Finger touchability module.
  *
- * Estimates the user's touch contact diameter from PointerEvent.width/height
- * when available. If the browser does not expose reliable contact geometry,
- * the module falls back to a predefined standard diameter.
+ * Organigram reference:
+ * - Touchability
+ *   → Finger Contact Model
+ *   → Minimum Target Size
  *
- * The measured or fallback diameter is then converted into shape-specific
- * minimum target widths used during protocol validation.
+ * Responsibility:
+ * Estimates the participant's touch contact diameter and derives
+ * shape-specific minimum target widths.
+ *
+ * This module uses:
+ * - PointerEvent.width / PointerEvent.height when available
+ * - a calibrated millimeter fallback when screen calibration exists
+ * - a default pixel fallback otherwise
+ *
+ * Important:
+ * Touchability affects protocol validation and target-size constraints.
+ * It does not directly place targets or validate trial hits.
+ *
+ * Extension guide:
+ * - To change fallback diameter: edit FALLBACK_TOUCH_DIAMETER_MM.
+ * - To change allowed diameter range: edit MIN/MAX_TOUCH_DIAMETER_PX.
+ * - To change shape-specific safety factors: edit computeWMinByShape().
+ * - To change saved participant touchability: edit core/storage/touchabilityStorage.js.
  */
 
 import { DEFAULT_TOUCH_DIAMETER_PX } from "../core/constants.js";
 
 const FALLBACK_TOUCH_DIAMETER_MM = 10;
-const FALLBACK_TOUCH_DIAMETER_PX =  DEFAULT_TOUCH_DIAMETER_PX;
+const FALLBACK_TOUCH_DIAMETER_PX = DEFAULT_TOUCH_DIAMETER_PX;
 const MIN_TOUCH_DIAMETER_PX = 8;
 const MAX_TOUCH_DIAMETER_PX = 140;
 
@@ -160,7 +177,6 @@ function applyFallback(dom, state) {
 }
 
 export function initFingerTouchability(dom, state) {
-  let touchStartTime = 0;
   let activePointerId = null;
   let maxMeasuredDiameterPx = 0;
 

@@ -1,4 +1,36 @@
+/**
+ * Core UI view helpers.
+ *
+ * Organigram reference:
+ * - UI Layer
+ *   → View Switching
+ *   → HUD Updates
+ *   → Calibration Status
+ *
+ * Responsibility:
+ * Handles simple top-level UI updates that are shared across modules.
+ *
+ * This module controls:
+ * - visible application panels
+ * - fullscreen/wake-lock policy
+ * - HUD viewport/calibration display
+ * - calibration status badge
+ *
+ * Important:
+ * This file should not contain experiment logic.
+ * It only updates UI state based on already-computed application state.
+ *
+ * Extension guide:
+ * - To add a new top-level view: extend show().
+ * - To add a new HUD field: extend updateHudSize().
+ * - To change calibration badge behavior: edit updateCalibrationStatus().
+ *
+ * UI text is German by design.
+ */
+
 import { setFullscreenEnforcement, setWakeLock } from "./helpers.js";
+
+const CALIBRATION_WARN_THRESHOLD_PCT = 2.0;
 
 /**
  * Switch between top-level views.
@@ -135,9 +167,7 @@ export function updateCalibrationStatus(state) {
   const errPct = hasErr ? Number(state.calErrorPct) : null;
 
   // Warning threshold in percent (e.g., 2%).
-  const WARN_THRESHOLD_PCT = 2.0;
-
-  if (hasErr && errPct > WARN_THRESHOLD_PCT) {
+  if (hasErr && errPct > CALIBRATION_WARN_THRESHOLD_PCT) {
     box.classList.add("warn");
     txt.textContent = "Kalibriert (prüfen)";
   } else {

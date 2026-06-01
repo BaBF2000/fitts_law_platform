@@ -1,3 +1,33 @@
+/**
+ * Admin settings persistence.
+ *
+ * Organigram reference:
+ * - Admin Settings
+ *   → Application Constraints
+ *   → Local Persistence
+ *
+ * Responsibility:
+ * Stores and restores editable application constraint values.
+ *
+ * These settings affect:
+ * - minimum visible target size
+ * - touch safety factor
+ * - maximum target size ratio
+ * - minimum amplitude margin
+ * - default required overlap
+ *
+ * Important:
+ * Defaults come from core/constants.js.
+ * Runtime constraint interpretation happens in modules/experimentConstraints.js.
+ *
+ * Extension guide:
+ * - To add a new admin setting:
+ *   1. Add its default value to DEFAULT_ADMIN_SETTINGS.
+ *   2. Validate it in sanitizeAdminSettings().
+ *   3. Add the UI control where admin settings are edited.
+ *   4. Use it from the relevant constraint or runtime module.
+ */
+
 import {
   DEFAULT_REQUIRED_OVERLAP,
   MIN_VISIBLE_TARGET_PX,

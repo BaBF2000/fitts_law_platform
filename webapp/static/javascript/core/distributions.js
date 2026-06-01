@@ -18,6 +18,7 @@
  * 1. Add its name to SUPPORTED_DISTRIBUTIONS.
  * 2. Add a sampling function.
  * 3. Register it in DISTRIBUTION_SAMPLERS.
+ * 4. Add the option to the UI if users should be able to select it.
  *
  * No other module should implement its own probability sampling logic.
  */

@@ -1,25 +1,44 @@
-// Default touch diameter used when the device/browser cannot provide
-// a reliable touch contact size.
+/**
+ * Core application constants.
+ *
+ * Organigram reference:
+ * - Core Utilities
+ *   → Global Constants
+ * - Experiment Engine
+ *   → Constraint System
+ * - Target System
+ *   → Touch Validation
+ *
+ * Responsibility:
+ * Defines stable default values shared across the application.
+ *
+ * Runtime-editable constraint values are handled in adminSettings.js.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Touch model                                                                */
+/* -------------------------------------------------------------------------- */
+
 export const DEFAULT_TOUCH_DIAMETER_PX = 40;
-
-// Minimum visual target size to keep targets visible and usable,
-// even when computed target widths are very small.
-export const MIN_VISIBLE_TARGET_PX = 24;
-
-// Safety multiplier used to derive minimum target sizes from the
-// measured or fallback touch diameter.
 export const TOUCH_SAFETY_FACTOR = 3;
-
-// Sampling step used when estimating geometric overlap between
-// the touch area and the target shape.
 export const OVERLAP_SAMPLE_STEP_PX = 2;
 
-// Default required overlap ratio between the touch area and target.
-// 1.0 means 100% overlap, 0.9 means 90%, and so on.
-export const DEFAULT_REQUIRED_OVERLAP = 1.0;
+/* -------------------------------------------------------------------------- */
+/* Target constraints                                                         */
+/* -------------------------------------------------------------------------- */
 
+export const MIN_VISIBLE_TARGET_PX = 24;
 export const MAX_TARGET_SIZE_RATIO = 0.25;
+export const VIEWPORT_TARGET_MARGIN_PX = 10;
+
+/* -------------------------------------------------------------------------- */
+/* Amplitude constraints                                                      */
+/* -------------------------------------------------------------------------- */
+
 export const MIN_AMPLITUDE_MARGIN_PX = 10;
 
-// Keep target bounding boxes slightly inside the viewport.
-export const VIEWPORT_TARGET_MARGIN_PX = 10;
+/* -------------------------------------------------------------------------- */
+/* Validation defaults                                                        */
+/* -------------------------------------------------------------------------- */
+
+export const DEFAULT_REQUIRED_OVERLAP = 1.0;

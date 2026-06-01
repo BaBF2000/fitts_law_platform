@@ -1,4 +1,33 @@
 /**
+ * Device context collector.
+ *
+ * Organigram reference:
+ * - Core Utilities
+ *   → Runtime Device Context
+ * - Experiment Engine
+ *   → Result Metadata
+ *
+ * Responsibility:
+ * Collects browser, display, input, performance and locale information
+ * for each recorded interaction.
+ *
+ * The returned object is stored with experiment result rows so that later
+ * analysis can interpret movement data in relation to the device context.
+ *
+ * Important:
+ * These values are descriptive metadata only.
+ * They should not directly change experiment behavior.
+ *
+ * Extension guide:
+ * - To add a new exported device field:
+ *   1. Collect it in getDeviceContext().
+ *   2. Add it to the returned object.
+ *   3. Add a matching database/CSV column if it must be persisted.
+ */
+
+
+
+/**
  * Collects contextual device and environment information.
  */
 export function getDeviceContext() {

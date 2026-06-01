@@ -1,5 +1,5 @@
 /**
- * Experiment constraint model.
+ * Experiment constraint model
  *
  * Organigram reference:
  * - Experiment Engine
@@ -10,7 +10,7 @@
  *   → Application Constraints
  *
  * Responsibility:
- * This module defines the physical and ergonomic limits used by the app.
+ * This module defines the physical and ergonomic limits used by the app
  * It is used by:
  * - real experiment generation
  * - target rendering safety
@@ -26,10 +26,10 @@
  * - What amplitude is needed to avoid target overlap?
  *
  * Extension guide:
- * - To change default constants: edit core/constants.js.
- * - To change runtime/admin constraints: edit core/adminSettings.js.
- * - To change how trial values are generated: edit modules/trialParameters.js.
- * - To change Monte Carlo interpretation: edit modules/monteCarlo.js.
+ * - To change default constants: edit core/constants.js
+ * - To change runtime/admin constraints: edit core/adminSettings.js
+ * - To change how trial values are generated: edit modules/trialParameters.js
+ * - To change Monte Carlo interpretation: edit modules/monteCarlo/monteCarloDiagnostics.js
  */
 
 import {

@@ -1,3 +1,38 @@
+/**
+ * Protocol builder and validator.
+ *
+ * Organigram reference:
+ * - Experiment Design
+ *   → Protocol Builder
+ *   → Protocol Validation
+ * - Monte-Carlo-Simulation
+ *   → Protocol Diagnostics
+ *
+ * Responsibility:
+ * Builds, applies and validates protocol objects used by the experiment.
+ *
+ * This module handles:
+ * - reading protocol settings from the UI
+ * - normalizing sampling modes
+ * - validating A/W/ID entries
+ * - validating touchability and W constraints
+ * - attaching Monte Carlo summary data
+ * - applying a saved protocol back to the UI/state
+ *
+ * Important:
+ * This module does not persist protocols.
+ * Database persistence is handled by core/server.js.
+ *
+ * Historical session snapshots are saved separately when experiment results
+ * are sent to the backend.
+ *
+ * Extension guide:
+ * - To add a new parameter mode: extend validateProtocol().
+ * - To add a new sampling mode: update normalizeSampling().
+ * - To change Monte Carlo summary fields: edit attachMonteCarloSummary().
+ * - To change DB save/load behavior: edit core/server.js.
+ */
+
 import {
   getTargetSizeBoundsPx,
 } from "./experimentConstraints.js";

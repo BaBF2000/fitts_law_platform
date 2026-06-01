@@ -1,12 +1,48 @@
 /**
- * Backend communication helpers.
+ * Backend communication layer.
+ *
+ * Organigram reference:
+ * - Persistence Layer
+ *   → Experiment Database
+ *   → Protocol Database
+ *
+ * Responsibility:
+ * Provides all communication between the web application and the Flask
+ * backend API.
+ *
+ * Supported operations:
+ * - save experiment results
+ * - save protocols
+ * - load protocols
+ * - delete protocols
+ *
+ * Important:
+ * This module should only perform HTTP communication.
+ *
+ * It must not:
+ * - build experiment trials
+ * - perform Monte Carlo calculations
+ * - modify protocol structures
+ * - manipulate UI state
+ *
+ * Extension guide:
+ * - To add a new backend endpoint:
+ *   1. Add a new exported API function here.
+ *   2. Keep all fetch() calls centralized in this module.
+ *   3. Return normalized payloads or throw errors.
  */
 
 import { getDeviceContext } from "./device.js";
 import { loadAdminSettings } from "./adminSettings.js";
 
 /**
- * Send the completed experiment results to the Flask backend.
+ * Persist a completed experiment session.
+ *
+ * Stores:
+ * - experiment metadata
+ * - device context
+ * - protocol information
+ * - trial result rows
  */
 export async function sendResultsToPC(dom, state) {
   if (!state.results.length) {
@@ -97,6 +133,9 @@ export async function sendResultsToPC(dom, state) {
   return payload;
 }
 
+/**
+ * Delete a protocol from the backend database.
+ */
 export async function deleteProtocolFromDB(id) {
   const response = await fetch(`/api/protocols/${id}`, {
     method: "DELETE",
@@ -111,6 +150,9 @@ export async function deleteProtocolFromDB(id) {
   return payload;
 }
 
+/**
+ * Persist a protocol definition.
+ */
 export async function saveProtocolToDB(protocol, adminSettings) {
   const summary = protocol?.monte_carlo_summary ?? null;
 
@@ -149,6 +191,9 @@ export async function saveProtocolToDB(protocol, adminSettings) {
   return payload;
 }
 
+/**
+ * Load all stored protocols.
+ */
 export async function loadProtocolsFromDB() {
   const response = await fetch("/api/protocols");
   const payload = await response.json().catch(() => ({}));

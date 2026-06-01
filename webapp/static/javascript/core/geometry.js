@@ -1,4 +1,35 @@
 /**
+ * Geometry helpers.
+ *
+ * Organigram reference:
+ * - Core Utilities
+ *   → Geometry Engine
+ * - Target System
+ *   → Hit Testing
+ *   → Effective Width Calculation
+ *
+ * Responsibility:
+ * Provides pure geometry functions used by the target system.
+ *
+ * This module is intentionally DOM-free:
+ * it only works with numeric points, rectangles, circles and polygons.
+ *
+ * Used for:
+ * - point-in-shape tests
+ * - touch overlap estimation
+ * - target width on the movement axis
+ * - debug geometry calculations
+ *
+ * Extension guide:
+ * - To add a new target shape: add reusable geometry helpers here only
+ *   if the shape requires new mathematical operations.
+ * - Shape-specific decisions should stay in targets/Target.js.
+ */
+
+const EPSILON = 1e-9;
+const DUPLICATE_HIT_EPSILON = 0.001;
+
+/**
  * Check whether a point lies inside an axis-aligned rectangle.
  */
 export function pointInRect(px, py, rect) {
@@ -125,7 +156,7 @@ export function lineSegmentIntersection(linePoint, lineDir, a, b) {
   const vy = b.y - a.y;
 
   const det = lineDir.x * (-vy) - lineDir.y * (-vx);
-  if (Math.abs(det) < 1e-9) return null;
+  if (Math.abs(det) < EPSILON) return null;
 
   const dx = a.x - linePoint.x;
   const dy = a.y - linePoint.y;
@@ -133,7 +164,7 @@ export function lineSegmentIntersection(linePoint, lineDir, a, b) {
   const t = (dx * (-vy) - dy * (-vx)) / det;
   const u = (lineDir.x * dy - lineDir.y * dx) / det;
 
-  if (u < -1e-9 || u > 1 + 1e-9) return null;
+  if (u < -EPSILON || u > 1 + EPSILON) return null;
 
   return {
     x: linePoint.x + t * lineDir.x,
@@ -162,7 +193,7 @@ export function linePolygonIntersections(linePoint, lineDir, verts) {
 
     if (hit) {
       const duplicate = hits.some(
-        (h) => Math.hypot(h.x - hit.x, h.y - hit.y) < 0.001
+        (h) => Math.hypot(h.x - hit.x, h.y - hit.y) < DUPLICATE_HIT_EPSILON
       );
 
       if (!duplicate) hits.push(hit);

@@ -1,38 +1,52 @@
+/**
+ * Target debug overlay.
+ *
+ * Organigram reference:
+ * - Experiment Engine
+ *   → Target Debugging
+ *   → Geometry Visualization
+ *
+ * Responsibility:
+ * Draws an SVG overlay for inspecting target geometry during development.
+ *
+ * It visualizes:
+ * - planned movement axis A-B
+ * - planned target width C-D
+ * - effective target width E-F
+ * - optional touch area T
+ *
+ * Important:
+ * This module is only used when targetDebug=1 is active.
+ * It must not affect experiment measurements.
+ *
+ * Extension guide:
+ * - To add a new debug primitive: add a draw* helper.
+ * - To change ABCD visualization: edit drawABCD().
+ */
+
+import {
+  getViewportSize,
+} from "../core/helpers.js";
+
+function createSvgElement(tag) {
+  return document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    tag
+  );
+}
+
 export class TargetDebugOverlay {
   constructor() {
     this.svg = null;
   }
 
-  /**
-   * Return current viewport size.
-   *
-   * documentElement dimensions are generally more stable than
-   * 100vw/100vh on mobile browsers after orientation changes.
-   */
-  getViewportSize() {
-    return {
-      width:
-        document.documentElement?.clientWidth ||
-        window.visualViewport?.width ||
-        window.innerWidth,
-
-      height:
-        document.documentElement?.clientHeight ||
-        window.visualViewport?.height ||
-        window.innerHeight,
-    };
-  }
-
-  /**
-   * Create the SVG overlay once and reuse it.
-   */
   ensureSvg() {
     if (this.svg) {
       this.updateViewportSize();
       return this.svg;
     }
 
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const svg = createSvgElement("svg");
 
     svg.id = "targetDebugOverlay";
 
@@ -53,13 +67,13 @@ export class TargetDebugOverlay {
     return svg;
   }
 
-  /**
-   * Synchronize SVG dimensions with the current viewport.
-   */
   updateViewportSize() {
     if (!this.svg) return;
 
-    const { width, height } = this.getViewportSize();
+    const {
+      width,
+      height,
+    } = getViewportSize();
 
     this.svg.setAttribute("width", String(width));
     this.svg.setAttribute("height", String(height));
@@ -69,9 +83,6 @@ export class TargetDebugOverlay {
     this.svg.style.height = `${height}px`;
   }
 
-  /**
-   * Remove all debug drawings.
-   */
   clear() {
     if (!this.svg) return;
 
@@ -79,9 +90,6 @@ export class TargetDebugOverlay {
     this.svg.style.display = "none";
   }
 
-  /**
-   * Draw a line segment.
-   */
   drawLine({
     x1,
     y1,
@@ -92,8 +100,7 @@ export class TargetDebugOverlay {
     dash = "",
   }) {
     const svg = this.ensureSvg();
-
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    const line = createSvgElement("line");
 
     line.setAttribute("x1", String(x1));
     line.setAttribute("y1", String(y1));
@@ -109,14 +116,15 @@ export class TargetDebugOverlay {
     svg.appendChild(line);
   }
 
-  /**
-   * Draw a labeled point.
-   */
-  drawPoint({ x, y, label, fill = "white" }) {
+  drawPoint({
+    x,
+    y,
+    label,
+    fill = "white",
+  }) {
     const svg = this.ensureSvg();
 
-    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-
+    const circle = createSvgElement("circle");
     circle.setAttribute("cx", String(x));
     circle.setAttribute("cy", String(y));
     circle.setAttribute("r", "5");
@@ -124,8 +132,7 @@ export class TargetDebugOverlay {
     circle.setAttribute("stroke", "black");
     circle.setAttribute("stroke-width", "2");
 
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-
+    const text = createSvgElement("text");
     text.setAttribute("x", String(x + 8));
     text.setAttribute("y", String(y - 8));
     text.setAttribute("fill", fill);
@@ -137,9 +144,6 @@ export class TargetDebugOverlay {
     svg.appendChild(text);
   }
 
-  /**
-   * Draw plain debug text.
-   */
   drawText({
     x,
     y,
@@ -149,8 +153,7 @@ export class TargetDebugOverlay {
     weight = 700,
   }) {
     const svg = this.ensureSvg();
-
-    const el = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    const el = createSvgElement("text");
 
     el.setAttribute("x", String(x));
     el.setAttribute("y", String(y));
@@ -161,15 +164,11 @@ export class TargetDebugOverlay {
     el.setAttribute("stroke", "black");
     el.setAttribute("stroke-width", "3");
     el.setAttribute("stroke-linejoin", "round");
-
     el.textContent = text;
 
     svg.appendChild(el);
   }
 
-  /**
-   * Draw a touch area circle.
-   */
   drawTouchArea({
     x,
     y,
@@ -178,8 +177,7 @@ export class TargetDebugOverlay {
     stroke = "cyan",
   }) {
     const svg = this.ensureSvg();
-
-    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    const circle = createSvgElement("circle");
 
     circle.setAttribute("cx", String(x));
     circle.setAttribute("cy", String(y));
@@ -191,127 +189,155 @@ export class TargetDebugOverlay {
     svg.appendChild(circle);
   }
 
-  /**
-   * Draw:
-   * - AB movement axis
-   * - CD target width on the movement axis
-   * - optional touch area
-   */
-  drawABCD({ a, b, c, d, effectiveC = null, effectiveD = null, touchArea = null, }) {
+  drawMovementAxis(a, b) {
+    if (!a || !b) return;
+
+    const Apx =
+      Math.hypot(b.x - a.x, b.y - a.y);
+
+    this.drawLine({
+      x1: a.x,
+      y1: a.y,
+      x2: b.x,
+      y2: b.y,
+      stroke: "lime",
+      width: 2,
+      dash: "8 6",
+    });
+
+    this.drawPoint({
+      x: a.x,
+      y: a.y,
+      label: "A",
+      fill: "lime",
+    });
+
+    this.drawPoint({
+      x: b.x,
+      y: b.y,
+      label: "B",
+      fill: "lime",
+    });
+
+    this.drawText({
+      x: (a.x + b.x) / 2 + 10,
+      y: (a.y + b.y) / 2 - 10,
+      text: `A = ${Apx.toFixed(1)} px`,
+      fill: "lime",
+    });
+  }
+
+  drawWidthSegment({
+    c,
+    d,
+    labelStart,
+    labelEnd,
+    text,
+    stroke,
+    fill,
+    dash = "",
+    textOffsetY = 18,
+  }) {
+    if (!c || !d) return;
+
+    const widthPx =
+      Math.hypot(d.x - c.x, d.y - c.y);
+
+    this.drawLine({
+      x1: c.x,
+      y1: c.y,
+      x2: d.x,
+      y2: d.y,
+      stroke,
+      width: 4,
+      dash,
+    });
+
+    this.drawPoint({
+      x: c.x,
+      y: c.y,
+      label: labelStart,
+      fill,
+    });
+
+    this.drawPoint({
+      x: d.x,
+      y: d.y,
+      label: labelEnd,
+      fill,
+    });
+
+    this.drawText({
+      x: (c.x + d.x) / 2 + 10,
+      y: (c.y + d.y) / 2 + textOffsetY,
+      text: `${text} = ${widthPx.toFixed(1)} px`,
+      fill,
+    });
+  }
+
+  drawTouchDebug(touchArea) {
+    if (!touchArea) return;
+
+    this.drawTouchArea({
+      x: touchArea.x,
+      y: touchArea.y,
+      radius: touchArea.radiusPx,
+    });
+
+    this.drawPoint({
+      x: touchArea.x,
+      y: touchArea.y,
+      label: "T",
+      fill: "cyan",
+    });
+
+    this.drawText({
+      x: touchArea.x + touchArea.radiusPx + 8,
+      y: touchArea.y + 4,
+      text: `touch Ø = ${touchArea.diameterPx.toFixed(1)} px`,
+      fill: "cyan",
+    });
+  }
+
+  drawABCD({
+    a,
+    b,
+    c,
+    d,
+    effectiveC = null,
+    effectiveD = null,
+    touchArea = null,
+  }) {
     const svg = this.ensureSvg();
 
     svg.innerHTML = "";
     svg.style.display = "block";
 
-    // Planned movement axis AB.
-    if (a && b) {
-      const Apx = Math.hypot(b.x - a.x, b.y - a.y);
+    this.drawMovementAxis(a, b);
 
-      this.drawLine({
-        x1: a.x,
-        y1: a.y,
-        x2: b.x,
-        y2: b.y,
-        stroke: "lime",
-        width: 2,
-        dash: "8 6",
-      });
+    this.drawWidthSegment({
+      c,
+      d,
+      labelStart: "C",
+      labelEnd: "D",
+      text: "W_axis",
+      stroke: "red",
+      fill: "red",
+      textOffsetY: 18,
+    });
 
-      this.drawPoint({ x: a.x, y: a.y, label: "A", fill: "lime" });
-      this.drawPoint({ x: b.x, y: b.y, label: "B", fill: "lime" });
+    this.drawWidthSegment({
+      c: effectiveC,
+      d: effectiveD,
+      labelStart: "E",
+      labelEnd: "F",
+      text: "W_eff",
+      stroke: "cyan",
+      fill: "cyan",
+      dash: "4 4",
+      textOffsetY: 34,
+    });
 
-      this.drawText({
-        x: (a.x + b.x) / 2 + 10,
-        y: (a.y + b.y) / 2 - 10,
-        text: `A = ${Apx.toFixed(1)} px`,
-        fill: "lime",
-      });
-    }
-
-    // Target width segment CD on the movement axis.
-    if (c && d) {
-      const WaxisPx = Math.hypot(d.x - c.x, d.y - c.y);
-
-      this.drawLine({
-        x1: c.x,
-        y1: c.y,
-        x2: d.x,
-        y2: d.y,
-        stroke: "red",
-        width: 4,
-      });
-
-      this.drawPoint({ x: c.x, y: c.y, label: "C", fill: "red" });
-      this.drawPoint({ x: d.x, y: d.y, label: "D", fill: "red" });
-
-      this.drawText({
-        x: (c.x + d.x) / 2 + 10,
-        y: (c.y + d.y) / 2 + 18,
-        text: `W_axis = ${WaxisPx.toFixed(1)} px`,
-        fill: "yellow",
-      });
-    }
-    
-    // Effective target width segment based on the real touch point.
-    if (effectiveC && effectiveD) {
-      const WeffectivePx = Math.hypot(
-        effectiveD.x - effectiveC.x,
-        effectiveD.y - effectiveC.y
-      );
-    
-      this.drawLine({
-        x1: effectiveC.x,
-        y1: effectiveC.y,
-        x2: effectiveD.x,
-        y2: effectiveD.y,
-        stroke: "cyan",
-        width: 4,
-        dash: "4 4",
-      });
-    
-      this.drawPoint({
-        x: effectiveC.x,
-        y: effectiveC.y,
-        label: "E",
-        fill: "cyan",
-      });
-    
-      this.drawPoint({
-        x: effectiveD.x,
-        y: effectiveD.y,
-        label: "F",
-        fill: "cyan",
-      });
-    
-      this.drawText({
-        x: (effectiveC.x + effectiveD.x) / 2 + 10,
-        y: (effectiveC.y + effectiveD.y) / 2 + 34,
-        text: `W_eff = ${WeffectivePx.toFixed(1)} px`,
-        fill: "cyan",
-      });
-    }
-
-    // Optional touch area overlay.
-    if (touchArea) {
-      this.drawTouchArea({
-        x: touchArea.x,
-        y: touchArea.y,
-        radius: touchArea.radiusPx,
-      });
-
-      this.drawPoint({
-        x: touchArea.x,
-        y: touchArea.y,
-        label: "T",
-        fill: "cyan",
-      });
-
-      this.drawText({
-        x: touchArea.x + touchArea.radiusPx + 8,
-        y: touchArea.y + 4,
-        text: `touch Ø = ${touchArea.diameterPx.toFixed(1)} px`,
-        fill: "cyan",
-      });
-    }
+    this.drawTouchDebug(touchArea);
   }
 }
