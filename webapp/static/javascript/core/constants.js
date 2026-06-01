@@ -20,3 +20,6 @@ export const DEFAULT_REQUIRED_OVERLAP = 1.0;
 
 export const MAX_TARGET_SIZE_RATIO = 0.25;
 export const MIN_AMPLITUDE_MARGIN_PX = 10;
+
+// Keep target bounding boxes slightly inside the viewport.
+export const VIEWPORT_TARGET_MARGIN_PX = 10;

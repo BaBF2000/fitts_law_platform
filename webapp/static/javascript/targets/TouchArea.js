@@ -1,53 +1,122 @@
+/**
+ * Touch Area Model
+ *
+ * Organigram reference:
+ * - Experiment Engine
+ *   → Input Processing
+ *   → Touch Model
+ *   → Touch Validation
+ *
+ * Responsibility:
+ * Represents the physical finger contact area used during:
+ * - overlap estimation
+ * - hit validation
+ * - export of touch geometry
+ *
+ * Design decision:
+ * Real finger contacts are device-dependent and irregular.
+ * For reproducibility, the application models every touch as a circle.
+ *
+ * Extension guide:
+ * If future work requires:
+ * - elliptical touches
+ * - pressure-dependent touches
+ * - stylus contacts
+ *
+ * this is the only module that should be modified.
+ */
+
 import { DEFAULT_TOUCH_DIAMETER_PX } from "../core/constants.js";
+
+/*
+* -------------------------------------------------------------------------- 
+* Helper functions                                                           
+* -------------------------------------------------------------------------- 
+*/
+
+function normalizeDiameter(value) {
+  const diameter = Number(value);
+
+  return Number.isFinite(diameter) && diameter > 0
+    ? diameter
+    : DEFAULT_TOUCH_DIAMETER_PX;
+}
+
+function pointInsideCircle(px, py, cx, cy, radius) {
+  const dx = px - cx;
+  const dy = py - cy;
+
+  return dx * dx + dy * dy <= radius * radius;
+}
+
+function circleArea(radius) {
+  return Math.PI * radius * radius;
+}
+
+/*
+* -------------------------------------------------------------------------- 
+* TouchArea                                                                  
+* -------------------------------------------------------------------------- */
 
 export class TouchArea {
   /**
-   * Represents the circular contact area of a finger/touch input.
-   * /**
-   * Important:
-   * The touch area is modeled as a circle for overlap estimation.
-   * Real finger contacts are more complex and device-dependent,
-   * but the circular approximation provides a stable and reproducible model.
+   * Create one circular touch area.
    *
-   *
-   * x/y are the center of the touch area in viewport CSS pixels.
+   * Coordinates are viewport CSS pixels.
    */
-  constructor({ x, y, diameterPx = DEFAULT_TOUCH_DIAMETER_PX }) {
+  constructor({
+    x,
+    y,
+    diameterPx = DEFAULT_TOUCH_DIAMETER_PX,
+  }) {
     this.x = Number(x);
     this.y = Number(y);
 
     this.diameterPx =
-      Number.isFinite(Number(diameterPx)) && Number(diameterPx) > 0
-        ? Number(diameterPx)
-        : DEFAULT_TOUCH_DIAMETER_PX;
+      normalizeDiameter(diameterPx);
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Derived geometry                                                         */
+  /* ------------------------------------------------------------------------ */
+
   /**
-   * Radius of the circular touch area in CSS pixels.
+   * Touch radius in CSS pixels.
    */
   get radiusPx() {
     return this.diameterPx / 2;
   }
 
   /**
-   * Area of the circular touch contact in px².
+   * Touch area in px².
    */
   get areaPx2() {
-    return Math.PI * this.radiusPx * this.radiusPx;
+    return circleArea(this.radiusPx);
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Geometry queries                                                         */
+  /* ------------------------------------------------------------------------ */
+
   /**
-   * Test whether a point lies inside the circular touch area.
+   * Test whether a point lies inside the touch area.
    */
   containsPoint(px, py) {
-    const dx = px - this.x;
-    const dy = py - this.y;
-
-    return dx * dx + dy * dy <= this.radiusPx * this.radiusPx;
+    return pointInsideCircle(
+      px,
+      py,
+      this.x,
+      this.y,
+      this.radiusPx
+    );
   }
 
+  /* ------------------------------------------------------------------------ */
+  /* Export                                                                    */
+  /* ------------------------------------------------------------------------ */
+
   /**
-   * Serialize touch geometry for CSV/database export.
+   * Serialize touch geometry for CSV and database export.
    */
   toJSON() {
     return {

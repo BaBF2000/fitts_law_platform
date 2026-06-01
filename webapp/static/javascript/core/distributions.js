@@ -1,9 +1,33 @@
 /**
  * Distribution sampling helpers.
  *
+ * Organigram reference:
+ * - Experiment Design
+ *   → Sampling
+ * - Monte Carlo Simulation
+ *   → Parameter Generator
+ *
+ * Responsibility:
  * This module is the single source of truth for stochastic sampling.
- * It is used by Monte Carlo and later by runtime parameter sampling.
+ * It is used by:
+ * - runtime parameter sampling
+ * - Monte Carlo simulation
+ *
+ * Extension guide:
+ * To add a new distribution:
+ * 1. Add its name to SUPPORTED_DISTRIBUTIONS.
+ * 2. Add a sampling function.
+ * 3. Register it in DISTRIBUTION_SAMPLERS.
+ *
+ * No other module should implement its own probability sampling logic.
  */
+
+export const SUPPORTED_DISTRIBUTIONS = [
+  "uniform",
+  "truncated_uniform",
+  "normal",
+  "truncated_normal",
+];
 
 export function randUniform(min, max) {
   return min + Math.random() * (max - min);
@@ -13,64 +37,160 @@ export function randNormal(mean, sd) {
   const u1 = Math.max(Math.random(), Number.EPSILON);
   const u2 = Math.random();
 
-  return mean + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return (
+    mean +
+    sd *
+      Math.sqrt(-2 * Math.log(u1)) *
+      Math.cos(2 * Math.PI * u2)
+  );
 }
 
-export function sampleDistribution({
-  distribution = "uniform",
+function isValidRange(min, max) {
+  return (
+    Number.isFinite(min) &&
+    Number.isFinite(max) &&
+    max >= min
+  );
+}
+
+function resolveNormalParams({ min, max, mean, sd }) {
+  return {
+    mean: Number.isFinite(mean)
+      ? mean
+      : (min + max) / 2,
+
+    sd: Number.isFinite(sd) && sd > 0
+      ? sd
+      : (max - min) / 6,
+  };
+}
+
+function resolveTruncationBounds({
   min,
   max,
-  mean = null,
-  sd = null,
-  truncateMin = null,
-  truncateMax = null,
-  maxAttempts = 100,
-} = {}) {
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) {
-    return NaN;
-  }
-
+  truncateMin,
+  truncateMax,
+}) {
   const hasTruncation =
     Number.isFinite(truncateMin) &&
     Number.isFinite(truncateMax) &&
     truncateMax >= truncateMin;
 
-  const tMin = hasTruncation ? truncateMin : min;
-  const tMax = hasTruncation ? truncateMax : max;
+  return {
+    min: hasTruncation ? truncateMin : min,
+    max: hasTruncation ? truncateMax : max,
+  };
+}
 
-  if (distribution === "uniform") {
-    return randUniform(min, max);
-  }
-
-  if (distribution === "truncated_uniform") {
-    const lo = Math.max(min, tMin);
-    const hi = Math.min(max, tMax);
-  
-    if (hi < lo) return NaN;
-  
-    return randUniform(lo, hi);
-  }
-
-  if (distribution === "normal") {
-    const m = Number.isFinite(mean) ? mean : (min + max) / 2;
-    const s = Number.isFinite(sd) && sd > 0 ? sd : (max - min) / 6;
-    return randNormal(m, s);
-  }
-
-  if (distribution === "truncated_normal") {
-    const m = Number.isFinite(mean) ? mean : (min + max) / 2;
-    const s = Number.isFinite(sd) && sd > 0 ? sd : (max - min) / 6;
-
-    for (let i = 0; i < maxAttempts; i++) {
-      const value = randNormal(m, s);
-
-      if (value >= tMin && value <= tMax) {
-        return value;
-      }
-    }
-
-    return Math.max(tMin, Math.min(tMax, randNormal(m, s)));
-  }
-
+function sampleUniform({ min, max }) {
   return randUniform(min, max);
+}
+
+function sampleTruncatedUniform({
+  min,
+  max,
+  truncateMin,
+  truncateMax,
+}) {
+  const bounds = resolveTruncationBounds({
+    min,
+    max,
+    truncateMin,
+    truncateMax,
+  });
+
+  const lo = Math.max(min, bounds.min);
+  const hi = Math.min(max, bounds.max);
+
+  if (!isValidRange(lo, hi)) {
+    return NaN;
+  }
+
+  return randUniform(lo, hi);
+}
+
+function sampleNormal({
+  min,
+  max,
+  mean,
+  sd,
+}) {
+  const params = resolveNormalParams({
+    min,
+    max,
+    mean,
+    sd,
+  });
+
+  return randNormal(params.mean, params.sd);
+}
+
+function sampleTruncatedNormal({
+  min,
+  max,
+  mean,
+  sd,
+  truncateMin,
+  truncateMax,
+  maxAttempts = 100,
+}) {
+  const bounds = resolveTruncationBounds({
+    min,
+    max,
+    truncateMin,
+    truncateMax,
+  });
+
+  const params = resolveNormalParams({
+    min,
+    max,
+    mean,
+    sd,
+  });
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const value = randNormal(params.mean, params.sd);
+
+    if (value >= bounds.min && value <= bounds.max) {
+      return value;
+    }
+  }
+
+  const fallback = randNormal(params.mean, params.sd);
+
+  return Math.max(
+    bounds.min,
+    Math.min(bounds.max, fallback)
+  );
+}
+
+const DISTRIBUTION_SAMPLERS = {
+  uniform: sampleUniform,
+  truncated_uniform: sampleTruncatedUniform,
+  normal: sampleNormal,
+  truncated_normal: sampleTruncatedNormal,
+};
+
+/**
+ * Sample one value from a named probability distribution.
+ *
+ * Unknown distributions intentionally fall back to "uniform" to keep the
+ * application robust when loading older or malformed protocols.
+ */
+export function sampleDistribution(options = {}) {
+  const {
+    distribution = "uniform",
+    min,
+    max,
+  } = options;
+
+  if (!isValidRange(min, max)) {
+    return NaN;
+  }
+
+  const sampler =
+    DISTRIBUTION_SAMPLERS[distribution] ??
+    DISTRIBUTION_SAMPLERS.uniform;
+
+  return sampler(options);
 }

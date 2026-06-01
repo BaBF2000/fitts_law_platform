@@ -1,17 +1,69 @@
+/**
+ * Experiment constraint model.
+ *
+ * Organigram reference:
+ * - Experiment Engine
+ *   → Constraint System
+ * - Monte-Carlo-Simulation
+ *   → Constraint Analysis
+ * - Admin Settings
+ *   → Application Constraints
+ *
+ * Responsibility:
+ * This module defines the physical and ergonomic limits used by the app.
+ * It is used by:
+ * - real experiment generation
+ * - target rendering safety
+ * - Monte Carlo distortion analysis
+ * - protocol validation
+ *
+ * Important:
+ * This file does not decide experiment design.
+ * It only answers:
+ * - What is the minimum allowed target size?
+ * - What is the maximum allowed target size?
+ * - Would a planned value be clamped?
+ * - What amplitude is needed to avoid target overlap?
+ *
+ * Extension guide:
+ * - To change default constants: edit core/constants.js.
+ * - To change runtime/admin constraints: edit core/adminSettings.js.
+ * - To change how trial values are generated: edit modules/trialParameters.js.
+ * - To change Monte Carlo interpretation: edit modules/monteCarlo.js.
+ */
+
 import {
   DEFAULT_TOUCH_DIAMETER_PX,
-  MIN_VISIBLE_TARGET_PX,
-  TOUCH_SAFETY_FACTOR,
-  MAX_TARGET_SIZE_RATIO,
-  MIN_AMPLITUDE_MARGIN_PX,
 } from "../core/constants.js";
 
 import { loadAdminSettings } from "../core/adminSettings.js";
-
 import { clamp, getViewportSize } from "../core/helpers.js";
+
+/* -------------------------------------------------------------------------- */
+/* Admin settings and viewport helpers                                        */
+/* -------------------------------------------------------------------------- */
+
+function getActiveAdminSettings() {
+  return loadAdminSettings();
+}
+
+function getActiveViewport(overrideViewport = null) {
+  return overrideViewport ?? getViewportSize();
+}
+
+function isBand1D(shape) {
+  return shape === "band1d_h" || shape === "band1d_v";
+}
+
+/* -------------------------------------------------------------------------- */
+/* Touch and target-size constraints                                          */
+/* -------------------------------------------------------------------------- */
 
 /**
  * Return the active touch diameter in CSS pixels.
+ *
+ * If no participant-specific touch size is available, the global fallback is
+ * used. This value is important because the target must remain touchable.
  */
 export function getTouchDiameterPx(state) {
   const value = Number(state?.touchDiameterPx);
@@ -30,7 +82,7 @@ export function getTouchDiameterPx(state) {
  */
 export function getMinTargetSizePx(state) {
   const touchDiameterPx = getTouchDiameterPx(state);
-  const admin = loadAdminSettings();
+  const admin = getActiveAdminSettings();
 
   return Math.max(
     admin.minVisibleTargetPx,
@@ -40,18 +92,24 @@ export function getMinTargetSizePx(state) {
 
 /**
  * Return the maximum target size allowed by the current viewport.
+ *
+ * This prevents targets from becoming unrealistically large compared to the
+ * available experiment area.
  */
 export function getMaxTargetSizePx(overrideViewport = null) {
-  const viewport = overrideViewport ?? getViewportSize();
-  const admin = loadAdminSettings();
+  const viewport = getActiveViewport(overrideViewport);
+  const admin = getActiveAdminSettings();
 
   return viewport.minSide * admin.maxTargetSizeRatio;
 }
 
 /**
- * Return target size bounds for the active environment.
+ * Return target-size bounds in CSS pixels.
  */
-export function getTargetSizeBoundsPx(state, overrideViewport = null) {
+export function getTargetSizeBoundsPx(
+  state,
+  overrideViewport = null
+) {
   return {
     minPx: getMinTargetSizePx(state),
     maxPx: getMaxTargetSizePx(overrideViewport),
@@ -61,17 +119,31 @@ export function getTargetSizeBoundsPx(state, overrideViewport = null) {
 /**
  * Clamp a target size to the active application bounds.
  */
-export function clampTargetSizePx(sizePx, state, overrideViewport = null) {
-  const { minPx, maxPx } = getTargetSizeBoundsPx(state, overrideViewport);
+export function clampTargetSizePx(
+  sizePx,
+  state,
+  overrideViewport = null
+) {
+  const { minPx, maxPx } =
+    getTargetSizeBoundsPx(state, overrideViewport);
 
   return clamp(sizePx, minPx, maxPx);
 }
 
 /**
- * Describe how a target size would be corrected.
+ * Describe how a planned target size would be corrected.
+ *
+ * Used by:
+ * - Monte Carlo analysis
+ * - runtime diagnostics
  */
-export function analyzeTargetSizeClamp(sizePx, state, overrideViewport = null) {
-  const { minPx, maxPx } = getTargetSizeBoundsPx(state, overrideViewport);
+export function analyzeTargetSizeClamp(
+  sizePx,
+  state,
+  overrideViewport = null
+) {
+  const { minPx, maxPx } =
+    getTargetSizeBoundsPx(state, overrideViewport);
 
   const value = Number(sizePx);
 
@@ -100,10 +172,19 @@ export function analyzeTargetSizeClamp(sizePx, state, overrideViewport = null) {
   };
 }
 
+/* -------------------------------------------------------------------------- */
+/* Amplitude constraints                                                       */
+/* -------------------------------------------------------------------------- */
+
 /**
  * Compute the minimum safe center-to-center amplitude.
  *
  * This prevents two consecutive targets from geometrically overlapping.
+ *
+ * Shape behavior:
+ * - circle: diameter + margin
+ * - polygon/square: bounding-box diagonal + margin
+ * - 1D bands: thickness + margin
  */
 export function getMinAmplitudePx({
   shape = "circle",
@@ -114,14 +195,14 @@ export function getMinAmplitudePx({
     return NaN;
   }
 
-  const admin = loadAdminSettings();
+  const admin = getActiveAdminSettings();
 
   const effectiveMarginPx =
     Number.isFinite(marginPx)
       ? marginPx
       : admin.minAmplitudeMarginPx;
 
-  if (shape === "band1d_h" || shape === "band1d_v") {
+  if (isBand1D(shape)) {
     return targetSizePx + effectiveMarginPx;
   }
 
@@ -133,50 +214,63 @@ export function getMinAmplitudePx({
   return radius * 2 + effectiveMarginPx;
 }
 
-/**
- * Return feasible W bounds in the currently selected input unit.
- *
- * The internal constraint model is expressed in px.
- * This helper converts Wmin/Wmax back into the user-facing unit.
- */
-export function getFeasibleWBoundsInUnit(unit, state, overrideViewport = null) {
-  const { minPx, maxPx } =
-    getTargetSizeBoundsPx(state, overrideViewport);
+/* -------------------------------------------------------------------------- */
+/* Unit conversion for feasible ranges                                        */
+/* -------------------------------------------------------------------------- */
 
+/**
+ * Convert a pixel bound into the currently selected user-facing unit.
+ *
+ * Supported units:
+ * - px
+ * - mm
+ * - relative
+ */
+function pxToUnit(px, unit, state, viewport) {
   if (unit === "px") {
-    return {
-      min: minPx,
-      max: maxPx,
-    };
+    return px;
   }
 
   if (unit === "mm") {
-    if (!state?.mmPerPx) {
-      return {
-        min: null,
-        max: null,
-      };
-    }
-
-    return {
-      min: minPx * state.mmPerPx,
-      max: maxPx * state.mmPerPx,
-    };
+    return state?.mmPerPx
+      ? px * state.mmPerPx
+      : null;
   }
 
-  const viewport = overrideViewport ?? getViewportSize();
+  return px / viewport.minSide;
+}
+
+/**
+ * Return feasible W bounds in the currently selected input unit.
+ *
+ * The internal constraint model is expressed in px. This helper converts
+ * Wmin/Wmax back into the unit used by the UI/protocol.
+ */
+export function getFeasibleWBoundsInUnit(
+  unit,
+  state,
+  overrideViewport = null
+) {
+  const viewport = getActiveViewport(overrideViewport);
+
+  const { minPx, maxPx } =
+    getTargetSizeBoundsPx(state, viewport);
 
   return {
-    min: minPx / viewport.minSide,
-    max: maxPx / viewport.minSide,
+    min: pxToUnit(minPx, unit, state, viewport),
+    max: pxToUnit(maxPx, unit, state, viewport),
   };
 }
 
 /**
  * Return feasible A bounds in the currently selected input unit.
  *
- * minApx is computed at trial level because it depends on the final target size
- * and shape. maxApx is the maximum requested/planned amplitude.
+ * minApx is computed at trial level because it depends on:
+ * - final target size
+ * - target shape
+ * - anti-overlap margin
+ *
+ * maxApx is the maximum requested/planned amplitude.
  */
 export function getFeasibleABoundsInUnit({
   unit,
@@ -185,7 +279,7 @@ export function getFeasibleABoundsInUnit({
   maxApx,
   overrideViewport = null,
 } = {}) {
-  const viewport = overrideViewport ?? getViewportSize();
+  const viewport = getActiveViewport(overrideViewport);
 
   if (!Number.isFinite(minApx)) {
     return {
@@ -199,29 +293,8 @@ export function getFeasibleABoundsInUnit({
       ? maxApx
       : minApx;
 
-  if (unit === "px") {
-    return {
-      min: minApx,
-      max: safeMaxApx,
-    };
-  }
-
-  if (unit === "mm") {
-    if (!state?.mmPerPx) {
-      return {
-        min: null,
-        max: null,
-      };
-    }
-
-    return {
-      min: minApx * state.mmPerPx,
-      max: safeMaxApx * state.mmPerPx,
-    };
-  }
-
   return {
-    min: minApx / viewport.minSide,
-    max: safeMaxApx / viewport.minSide,
+    min: pxToUnit(minApx, unit, state, viewport),
+    max: pxToUnit(safeMaxApx, unit, state, viewport),
   };
 }

@@ -154,55 +154,86 @@ function saveCurrentTouchability(dom, source = "measured") {
 /**
  * Render the list of locally saved protocols.
  */
-function renderProtocolList(dom, sessionDesign) {
+async function renderProtocolList(dom, sessionDesign) {
   if (!dom.protocolListBox) return;
 
-  const protocols = listProtocols();
+  const localProtocols = listProtocols();
 
-  if (!protocols.length) {
+  let dbProtocols = [];
+  try {
+    dbProtocols = await server.loadProtocolsFromDB();
+  } catch {
+    dbProtocols = [];
+  }
+
+  if (!localProtocols.length && !dbProtocols.length) {
     dom.protocolListBox.innerHTML = `
-      <p class="muted">Noch kein lokales Protokoll gespeichert.</p>
+      <p class="muted">Noch kein Protokoll gespeichert.</p>
     `;
     return;
   }
 
-  dom.protocolListBox.innerHTML = `
-    <p class="muted">Lokale Protokolle:</p>
-    <div class="protocolList">
-      ${protocols.map((p) => `
-        <div class="protocolItem" data-id="${p.id}">
-          <div>
-            <b>${p.protocol_name ?? p.name ?? "Unbenanntes Protokoll"}</b>
-            <div class="muted">
-              ${p.savedAt ? new Date(p.savedAt).toLocaleString("de-DE") : "—"}
-              · ${p.sessionBlocks?.length ?? 0} Blöcke
-            </div>
-            ${
-              p.protocol_comment
-                ? `<div class="muted">${p.protocol_comment}</div>`
-                : ""
-            }
-          </div>
-
-          <div class="row">
-            <button type="button" data-action="load" data-id="${p.id}">Laden</button>
-            <button type="button" data-action="delete" data-id="${p.id}">Löschen</button>
-          </div>
+  const localHtml = localProtocols.map((p) => `
+    <div class="protocolItem" data-source="local" data-id="${p.id}">
+      <div>
+        <b>${p.protocol_name ?? p.name ?? "Unbenanntes Protokoll"}</b>
+        <div class="muted">
+          Lokal · ${p.savedAt ? new Date(p.savedAt).toLocaleString("de-DE") : "—"}
+          · ${p.sessionBlocks?.length ?? 0} Blöcke
         </div>
-      `).join("")}
+        ${p.protocol_comment ? `<div class="muted">${p.protocol_comment}</div>` : ""}
+      </div>
+
+      <div class="row">
+        <button type="button" data-action="load-local" data-id="${p.id}">Laden</button>
+        <button type="button" data-action="delete-local" data-id="${p.id}">Löschen</button>
+      </div>
     </div>
+  `).join("");
+
+  const dbHtml = dbProtocols.map((p) => {
+    let parsed = null;
+
+    try {
+      parsed = JSON.parse(p.protocol_json || "{}");
+    } catch {
+      parsed = null;
+    }
+
+    return `
+      <div class="protocolItem" data-source="db" data-id="${p.id}">
+        <div>
+          <b>${p.protocol_name ?? "Unbenanntes Protokoll"}</b>
+          <div class="muted">
+            SQLite · ${p.updated_at ? new Date(p.updated_at).toLocaleString("de-DE") : "—"}
+            · ${parsed?.sessionBlocks?.length ?? "?"} Blöcke
+          </div>
+          ${p.protocol_comment ? `<div class="muted">${p.protocol_comment}</div>` : ""}
+        </div>
+
+        <div class="row">
+          <button type="button" data-action="load-db" data-id="${p.id}">Laden</button>
+          <button type="button" data-action="delete-db" data-id="${p.id}">Löschen</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  dom.protocolListBox.innerHTML = `
+    ${localProtocols.length ? `<p class="muted"><b>Lokale Protokolle</b></p>${localHtml}` : ""}
+    ${dbProtocols.length ? `<p class="muted"><b>Datenbank-Protokolle</b></p>${dbHtml}` : ""}
   `;
 
   dom.protocolListBox.querySelectorAll("button[data-action]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
       const action = btn.dataset.action;
 
-      if (action === "load") {
+      if (action === "load-local") {
         const protocol = loadProtocolById(id);
 
         if (!protocol) {
-          alert("Protokoll nicht gefunden.");
+          alert("Lokales Protokoll nicht gefunden.");
           renderProtocolList(dom, sessionDesign);
           return;
         }
@@ -212,13 +243,50 @@ function renderProtocolList(dom, sessionDesign) {
         showExperimentDesignEditor(dom);
         markProtocolStatus(dom, state, true);
 
-        alert("Protokoll geladen.");
+        alert("Lokales Protokoll geladen.");
       }
 
-      if (action === "delete") {
+      if (action === "delete-local") {
         deleteProtocolById(id);
         renderProtocolList(dom, sessionDesign);
-        alert("Protokoll gelöscht.");
+        alert("Lokales Protokoll gelöscht.");
+      }
+
+      if (action === "load-db") {
+        const item = dbProtocols.find((p) => String(p.id) === String(id));
+
+        if (!item) {
+          alert("Datenbank-Protokoll nicht gefunden.");
+          return;
+        }
+
+        let protocol = null;
+
+        try {
+          protocol = JSON.parse(item.protocol_json || "{}");
+        } catch {
+          alert("Datenbank-Protokoll konnte nicht gelesen werden.");
+          return;
+        }
+
+        applyProtocolObject(protocol, dom, state, sessionDesign);
+        hideProtocolList(dom);
+        showExperimentDesignEditor(dom);
+        markProtocolStatus(dom, state, true);
+
+        alert("Datenbank-Protokoll geladen.");
+      }
+
+      if (action === "delete-db") {
+        if (!confirm("Datenbank-Protokoll wirklich löschen?")) return;
+      
+        try {
+          await server.deleteProtocolFromDB(id);
+          await renderProtocolList(dom, sessionDesign);
+          alert("Datenbank-Protokoll gelöscht.");
+        } catch (err) {
+          alert("Löschen fehlgeschlagen: " + (err?.message || err));
+        }
       }
     });
   });
@@ -622,27 +690,59 @@ function setupExperimentDesignHandlers(dom, sessionDesign) {
     sessionDesign.open();
   });
 
-  dom.btnSaveProtocol?.addEventListener("click", () => {
+  dom.btnSaveProtocol?.addEventListener("click", async () => {
     const protocol = buildProtocolObject(dom, state, sessionDesign);
     const check = validateProtocol(protocol, state);
-
+  
     if (!check.ok) {
       alert(check.message);
       markProtocolStatus(dom, state, false);
       return;
     }
-
+  
     const protocolWithMonteCarlo =
       attachMonteCarloSummary(protocol, state);
-    
+  
+    const mc = protocolWithMonteCarlo.monte_carlo_summary;
+  
+    if (
+      mc?.worst_diagnostic === "strong_distortion" ||
+      Number(mc?.worst_clamp_pct ?? 0) > 50
+    ) {
+      const ok = confirm(
+        "Achtung: Das Protokoll ist stark verzerrt.\n\n" +
+        `Worst Clamp: ${(mc.worst_clamp_pct ?? 0).toFixed(1)}%\n` +
+        `Diagnose: ${mc.worst_diagnostic}\n\n` +
+        "Das bedeutet, dass die geplante Verteilung stark durch technische Grenzen verändert wird.\n\n" +
+        "Trotzdem speichern?"
+      );
+  
+      if (!ok) {
+        markProtocolStatus(dom, state, false);
+        return;
+      }
+    }
+  
     const saved = saveProtocol(protocolWithMonteCarlo);
-
+  
+    try {
+      await server.saveProtocolToDB(
+        protocolWithMonteCarlo,
+        loadAdminSettings()
+      );
+    } catch (err) {
+      alert(
+        "Protokoll wurde lokal gespeichert, aber nicht in der Datenbank.\n\n" +
+        (err?.message || err)
+      );
+    }
+  
     state.currentProtocol = saved;
     state.protocolName = saved.protocol_name || "";
     state.protocolComment = saved.protocol_comment || "";
-
+  
     markProtocolStatus(dom, state, true);
-
+  
     alert("Protokoll gespeichert.");
   });
 }

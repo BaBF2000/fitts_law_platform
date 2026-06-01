@@ -1,3 +1,35 @@
+/**
+ * Trial parameter resolver.
+ *
+ * Organigram reference:
+ * - Experiment Engine
+ *   → Trial Generator
+ *   → Parameter Resolver
+ *
+ * Responsibility:
+ * This module converts one trial definition into concrete numeric values:
+ * - A
+ * - W
+ * - ID
+ *
+ * It supports the three experiment parameter modes:
+ * - A_W  : A and W are entered directly, ID is computed later
+ * - ID_W : ID and W are entered, A is computed
+ * - ID_A : ID and A are entered, W is computed
+ *
+ * Important:
+ * This file resolves planned trial values only.
+ * It does not place targets on screen.
+ * It does not validate touches.
+ * It does not write result rows.
+ *
+ * Extension guide:
+ * - To add a new sampling distribution: edit core/distributions.js.
+ * - To change parameter parsing: edit modules/parameterSampling.js.
+ * - To change touch/size constraints: edit modules/experimentConstraints.js.
+ * - To change target placement: edit modules/experiment.js.
+ */
+
 import {
   computeID,
   computeWFromID,
@@ -7,10 +39,20 @@ import {
 
 import { sampleParameter } from "./parameterSampling.js";
 
-import { clampTargetSizePx, getFeasibleWBoundsInUnit} from "./experimentConstraints.js";
-
+import {
+  clampTargetSizePx,
+  getFeasibleWBoundsInUnit,
+} from "./experimentConstraints.js";
 
 const SHANNON_FORMULA = "shannon";
+
+/* -------------------------------------------------------------------------- */
+/* Unit conversion helpers                                                     */
+/* -------------------------------------------------------------------------- */
+
+function getViewportMinSide() {
+  return Math.min(window.innerWidth, window.innerHeight);
+}
 
 /**
  * Convert planned amplitude from px to mm when calibration is available.
@@ -31,148 +73,190 @@ function getWmmFromWpx(Wpx, W_in, unit, state) {
 }
 
 /**
- * Ensure W is at least as large as the measured/default touch diameter.
+ * Convert px back into the currently selected input unit.
+ */
+function pxToInputUnit(px, unit, state) {
+  if (!Number.isFinite(px)) return null;
+
+  if (unit === "px") {
+    return px;
+  }
+
+  if (unit === "mm") {
+    return state.mmPerPx
+      ? px * state.mmPerPx
+      : null;
+  }
+
+  return px / getViewportMinSide();
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sampling helpers                                                            */
+/* -------------------------------------------------------------------------- */
+
+function sampleA(t) {
+  return sampleParameter({
+    input: t.dist_entered,
+    random: !!t.random_A,
+    distribution: t.a_sampling ?? "uniform",
+  });
+}
+
+function sampleW(t, feasibleW) {
+  return sampleParameter({
+    input: t.width_entered,
+    random: !!t.random_W,
+    distribution: t.w_sampling ?? "uniform",
+    minOverride: feasibleW.min,
+    maxOverride: feasibleW.max,
+  });
+}
+
+function sampleID(t) {
+  return sampleParameter({
+    input: t.id_entered,
+    random: !!t.random_ID,
+    distribution: t.id_sampling ?? "uniform",
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Constraint helper                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Ensure W respects the active target-size constraints.
  *
  * This prevents impossible 100% overlap validation for very small targets.
- * The correction is applied in the currently selected input unit.
- * 
+ *
  * Important:
- * If W is increased, the effective planned ID may differ from the requested ID.
+ * If W is increased or decreased by constraints, the effective planned ID may
+ * differ from the originally requested ID.
  */
-function enforceMinTouchableW(Wpx, W_in, unit, state) {
+function enforceTargetSizeConstraints(Wpx, W_in, unit, state) {
   if (!Number.isFinite(Wpx)) {
     return { Wpx, W_in };
   }
 
-  const adjustedWpx = clampTargetSizePx(Wpx, state);
-  let adjustedW_in = W_in;
+  const adjustedWpx =
+    clampTargetSizePx(Wpx, state);
 
   if (adjustedWpx === Wpx) {
     return { Wpx, W_in };
   }
 
-  if (unit === "mm") {
-    adjustedW_in = state.mmPerPx
-      ? adjustedWpx * state.mmPerPx
-      : W_in;
-  } else if (unit === "px") {
-    adjustedW_in = adjustedWpx;
-  } else {
-    const minSide = Math.min(window.innerWidth, window.innerHeight);
-    adjustedW_in = adjustedWpx / minSide;
-  }
-
   return {
     Wpx: adjustedWpx,
-    W_in: adjustedW_in,
+    W_in: pxToInputUnit(adjustedWpx, unit, state) ?? W_in,
   };
 }
 
-/**
- * Resolve one trial definition into concrete A, W and ID values.
- *
- * Supported modes:
- * - A_W  : amplitude and width are entered directly
- * - ID_A : ID and amplitude are entered, width is computed
- * - ID_W : ID and width are entered, amplitude is computed
- */
-export function resolveTrialParameters(t, state) {
-  const paramMode = t.param_mode ?? "A_W";
-  const unit = t.unit;
-  const formula = SHANNON_FORMULA;
-  const feasibleW = getFeasibleWBoundsInUnit(unit, state);
+/* -------------------------------------------------------------------------- */
+/* Mode resolvers                                                              */
+/* -------------------------------------------------------------------------- */
 
-  let A_in = null;
+function resolveModeAW(t, state, unit, feasibleW) {
+  let A_in = sampleA(t);
+  let W_in = sampleW(t, feasibleW);
+
+  const Aconv = convertToPxAndMm(A_in, unit, state.mmPerPx);
+  const Wconv = convertToPxAndMm(W_in, unit, state.mmPerPx);
+
+  let Apx = Aconv.px;
+  let Wpx = Wconv.px;
+
+  ({ Wpx, W_in } =
+    enforceTargetSizeConstraints(Wpx, W_in, unit, state));
+
+  return {
+    A_in,
+    W_in,
+    ID_in: null,
+    Apx,
+    Wpx,
+  };
+}
+
+function resolveModeIDA(t, state, unit, formula) {
+  const ID_in = sampleID(t);
+  const A_in = sampleA(t);
+
+  const Aconv = convertToPxAndMm(A_in, unit, state.mmPerPx);
+
+  let Apx = Aconv.px;
+  let Wpx = NaN;
   let W_in = null;
-  let ID_in = null;
+
+  if (unit === "mm") {
+    W_in = computeWFromID(Aconv.mm, ID_in, formula);
+    Wpx = state.mmPerPx ? W_in / state.mmPerPx : NaN;
+  } else {
+    Wpx = computeWFromID(Apx, ID_in, formula);
+    W_in = pxToInputUnit(Wpx, unit, state);
+  }
+
+  ({ Wpx, W_in } =
+    enforceTargetSizeConstraints(Wpx, W_in, unit, state));
+
+  return {
+    A_in,
+    W_in,
+    ID_in,
+    Apx,
+    Wpx,
+  };
+}
+
+function resolveModeIDW(t, state, unit, formula, feasibleW) {
+  const ID_in = sampleID(t);
+  let W_in = sampleW(t, feasibleW);
+
+  const Wconv = convertToPxAndMm(W_in, unit, state.mmPerPx);
+
+  let Wpx = Wconv.px;
+
+  ({ Wpx, W_in } =
+    enforceTargetSizeConstraints(Wpx, W_in, unit, state));
 
   let Apx = NaN;
-  let Wpx = NaN;
+  let A_in = null;
 
-  // --------------------------------------------------------
-  // A + W
-  // --------------------------------------------------------
-
-  if (paramMode === "A_W") {
-    A_in = sampleParameter({ input: t.dist_entered, random: !!t.random_A, distribution: t.a_sampling ?? "uniform", });
-    W_in = sampleParameter({ input: t.width_entered, random: !!t.random_W, distribution: t.w_sampling ?? "uniform", 
-      minOverride: feasibleW.min, maxOverride: feasibleW.max,
-    });
-
-    const Aconv = convertToPxAndMm(A_in, unit, state.mmPerPx);
-    const Wconv = convertToPxAndMm(W_in, unit, state.mmPerPx);
-
-    Apx = Aconv.px;
-    Wpx = Wconv.px;
-
-    // Keep directly entered/sampled W touchable.
-    ({ Wpx, W_in } = enforceMinTouchableW(Wpx, W_in, unit, state));
+  if (unit === "mm") {
+    A_in = computeAFromWAndID(W_in, ID_in, formula);
+    Apx = state.mmPerPx ? A_in / state.mmPerPx : NaN;
+  } else {
+    Apx = computeAFromWAndID(Wpx, ID_in, formula);
+    A_in = pxToInputUnit(Apx, unit, state);
   }
 
-  // --------------------------------------------------------
-  // ID + A
-  // --------------------------------------------------------
+  return {
+    A_in,
+    W_in,
+    ID_in,
+    Apx,
+    Wpx,
+  };
+}
 
-  if (paramMode === "ID_A") {
-    ID_in = sampleParameter({ input: t.id_entered, random: !!t.random_ID, distribution: t.id_sampling ?? "uniform", });
-    A_in = sampleParameter({ input: t.dist_entered, random: !!t.random_A, distribution: t.a_sampling ?? "uniform", });
+/* -------------------------------------------------------------------------- */
+/* Planned values                                                              */
+/* -------------------------------------------------------------------------- */
 
-    const Aconv = convertToPxAndMm(A_in, unit, state.mmPerPx);
-    Apx = Aconv.px;
+function computePlannedValues({
+  Apx,
+  Wpx,
+  A_in,
+  W_in,
+  unit,
+  state,
+  formula,
+}) {
+  const A_mm_planned =
+    getAmmFromApx(Apx, A_in, unit, state);
 
-    // Compute W from A and ID.
-    if (unit === "mm") {
-      W_in = computeWFromID(Aconv.mm, ID_in, formula);
-      Wpx = state.mmPerPx ? W_in / state.mmPerPx : NaN;
-    } else if (unit === "px") {
-      W_in = computeWFromID(Apx, ID_in, formula);
-      Wpx = W_in;
-    } else {
-      Wpx = computeWFromID(Apx, ID_in, formula);
-      const minSide = Math.min(window.innerWidth, window.innerHeight);
-      W_in = Number.isFinite(Wpx) ? Wpx / minSide : null;
-    }
-
-    // Keep computed W touchable.
-    ({ Wpx, W_in } = enforceMinTouchableW(Wpx, W_in, unit, state));
-  }
-
-  // --------------------------------------------------------
-  // ID + W
-  // --------------------------------------------------------
-
-  if (paramMode === "ID_W") {
-    ID_in = sampleParameter({ input: t.id_entered, random: !!t.random_ID, distribution: t.id_sampling ?? "uniform", });
-    W_in = sampleParameter({ input: t.width_entered, random: !!t.random_W, distribution: t.w_sampling ?? "uniform", 
-       minOverride: feasibleW.min, maxOverride: feasibleW.max,
-    });
-
-    const Wconv = convertToPxAndMm(W_in, unit, state.mmPerPx);
-    Wpx = Wconv.px;
-
-    // Keep directly entered/sampled W touchable before computing A.
-    ({ Wpx, W_in } = enforceMinTouchableW(Wpx, W_in, unit, state));
-
-    // Compute A from W and ID.
-    if (unit === "mm") {
-      A_in = computeAFromWAndID(W_in, ID_in, formula);
-      Apx = state.mmPerPx ? A_in / state.mmPerPx : NaN;
-    } else if (unit === "px") {
-      Apx = computeAFromWAndID(Wpx, ID_in, formula);
-      A_in = Apx;
-    } else {
-      Apx = computeAFromWAndID(Wpx, ID_in, formula);
-      const minSide = Math.min(window.innerWidth, window.innerHeight);
-      A_in = Number.isFinite(Apx) ? Apx / minSide : null;
-    }
-  }
-
-  // --------------------------------------------------------
-  // Planned values
-  // --------------------------------------------------------
-
-  const A_mm_planned = getAmmFromApx(Apx, A_in, unit, state);
-  const W_mm_planned = getWmmFromWpx(Wpx, W_in, unit, state);
+  const W_mm_planned =
+    getWmmFromWpx(Wpx, W_in, unit, state);
 
   const ID_planned =
     Number.isFinite(A_mm_planned) &&
@@ -181,18 +265,61 @@ export function resolveTrialParameters(t, state) {
       : null;
 
   return {
-    formula,
-    paramMode,
-
-    A_in,
-    W_in,
-    ID_in,
-
-    Apx,
-    Wpx,
-
     A_mm_planned,
     W_mm_planned,
     ID_planned,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Public API                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Resolve one trial definition into concrete A, W and ID values.
+ */
+export function resolveTrialParameters(t, state) {
+  const paramMode = t.param_mode ?? "A_W";
+  const unit = t.unit;
+  const formula = SHANNON_FORMULA;
+
+  const feasibleW =
+    getFeasibleWBoundsInUnit(unit, state);
+
+  let resolved;
+
+  if (paramMode === "ID_A") {
+    resolved =
+      resolveModeIDA(t, state, unit, formula);
+  } else if (paramMode === "ID_W") {
+    resolved =
+      resolveModeIDW(t, state, unit, formula, feasibleW);
+  } else {
+    resolved =
+      resolveModeAW(t, state, unit, feasibleW);
+  }
+
+  const planned =
+    computePlannedValues({
+      ...resolved,
+      unit,
+      state,
+      formula,
+    });
+
+  return {
+    formula,
+    paramMode,
+
+    A_in: resolved.A_in,
+    W_in: resolved.W_in,
+    ID_in: resolved.ID_in,
+
+    Apx: resolved.Apx,
+    Wpx: resolved.Wpx,
+
+    A_mm_planned: planned.A_mm_planned,
+    W_mm_planned: planned.W_mm_planned,
+    ID_planned: planned.ID_planned,
   };
 }

@@ -128,6 +128,32 @@ def init_db() -> None:
 
         cur.execute(
             """
+            CREATE TABLE IF NOT EXISTS protocol (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+        
+              protocol_name TEXT NOT NULL UNIQUE,
+              protocol_comment TEXT,
+              protocol_json TEXT NOT NULL,
+        
+              a_sampling TEXT,
+              w_sampling TEXT,
+              id_sampling TEXT,
+        
+              admin_settings_json TEXT,
+        
+              monte_carlo_summary_json TEXT,
+              monte_carlo_warning_count INTEGER,
+              monte_carlo_worst_clamp_pct REAL,
+              monte_carlo_worst_diagnostic TEXT,
+        
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS session (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               participant_id TEXT NOT NULL,

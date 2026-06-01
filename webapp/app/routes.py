@@ -206,6 +206,123 @@ def check_ids():
         }
     )
 
+@bp.get("/api/protocols")
+def api_list_protocols():
+    with db() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+              id,
+              protocol_name,
+              protocol_comment,
+              protocol_json,
+              a_sampling,
+              w_sampling,
+              id_sampling,
+              admin_settings_json,
+              monte_carlo_summary_json,
+              monte_carlo_warning_count,
+              monte_carlo_worst_clamp_pct,
+              monte_carlo_worst_diagnostic,
+              created_at,
+              updated_at
+            FROM protocol
+            ORDER BY updated_at DESC
+            """
+        )
+        rows = [dict(row) for row in cur.fetchall()]
+
+    return jsonify({"ok": True, "protocols": rows})
+
+@bp.post("/api/protocols")
+def api_save_protocol():
+    payload = request.get_json(silent=True) or {}
+
+    protocol_json = payload.get("protocol_json")
+    protocol_name = payload.get("protocol_name") or "Unbenanntes Protokoll"
+
+    if not protocol_json:
+        return jsonify({"ok": False, "error": "protocol_json missing"}), 400
+
+    now = now_iso_seconds()
+
+    data = {
+        "protocol_name": protocol_name,
+        "protocol_comment": payload.get("protocol_comment"),
+        "protocol_json": protocol_json,
+
+        "a_sampling": payload.get("a_sampling"),
+        "w_sampling": payload.get("w_sampling"),
+        "id_sampling": payload.get("id_sampling"),
+
+        "admin_settings_json": payload.get("admin_settings_json"),
+
+        "monte_carlo_summary_json": payload.get("monte_carlo_summary_json"),
+        "monte_carlo_warning_count": payload.get("monte_carlo_warning_count"),
+        "monte_carlo_worst_clamp_pct": payload.get("monte_carlo_worst_clamp_pct"),
+        "monte_carlo_worst_diagnostic": payload.get("monte_carlo_worst_diagnostic"),
+
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    with DB_WRITE_LOCK:
+        with db() as conn:
+            cur = conn.cursor()
+    
+            cur.execute(
+                """
+                SELECT id, created_at
+                FROM protocol
+                WHERE protocol_name = ?
+                LIMIT 1
+                """,
+                (protocol_name,),
+            )
+            existing = cur.fetchone()
+    
+            if existing:
+                cur.execute(
+                    """
+                    UPDATE protocol
+                    SET
+                      protocol_comment = ?,
+                      protocol_json = ?,
+                      a_sampling = ?,
+                      w_sampling = ?,
+                      id_sampling = ?,
+                      admin_settings_json = ?,
+                      monte_carlo_summary_json = ?,
+                      monte_carlo_warning_count = ?,
+                      monte_carlo_worst_clamp_pct = ?,
+                      monte_carlo_worst_diagnostic = ?,
+                      updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        payload.get("protocol_comment"),
+                        protocol_json,
+                        payload.get("a_sampling"),
+                        payload.get("w_sampling"),
+                        payload.get("id_sampling"),
+                        payload.get("admin_settings_json"),
+                        payload.get("monte_carlo_summary_json"),
+                        payload.get("monte_carlo_warning_count"),
+                        payload.get("monte_carlo_worst_clamp_pct"),
+                        payload.get("monte_carlo_worst_diagnostic"),
+                        now,
+                        existing["id"],
+                    ),
+                )
+                protocol_id = existing["id"]
+            else:
+                insert_dict(cur, "protocol", data)
+                protocol_id = cur.lastrowid
+    
+            conn.commit()
+    return jsonify({"ok": True, "protocol_id": protocol_id})
+
 
 @bp.post("/save_results")
 def save_results():
@@ -529,6 +646,16 @@ def export_session_by_id_csv(session_id: int):
     filename = f"{pid}_{session_id}.csv"
 
     return rows_to_csv_response(rows, filename)
+
+@bp.delete("/api/protocols/<int:protocol_id>")
+def api_delete_protocol(protocol_id: int):
+    with DB_WRITE_LOCK:
+        with db() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM protocol WHERE id = ?", (protocol_id,))
+            conn.commit()
+
+    return jsonify({"ok": True})
 
 
 # ---------------- Dashboard (admin) ----------------

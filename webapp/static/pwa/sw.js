@@ -1,5 +1,5 @@
 // Increment this when you want to force-refresh cached assets (hard cache bust).
-const CACHE_VERSION = "v15";
+const CACHE_VERSION = "v20";
 const CACHE = `fitts-${CACHE_VERSION}`;
 
 // Handle messages from pages (e.g., update banner -> request immediate activation).

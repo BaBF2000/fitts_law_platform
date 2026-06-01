@@ -96,3 +96,66 @@ export async function sendResultsToPC(dom, state) {
 
   return payload;
 }
+
+export async function deleteProtocolFromDB(id) {
+  const response = await fetch(`/api/protocols/${id}`, {
+    method: "DELETE",
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error || "protocol delete failed");
+  }
+
+  return payload;
+}
+
+export async function saveProtocolToDB(protocol, adminSettings) {
+  const summary = protocol?.monte_carlo_summary ?? null;
+
+  const response = await fetch("/api/protocols", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      protocol_name: protocol.protocol_name || protocol.name || "Unbenanntes Protokoll",
+      protocol_comment: protocol.protocol_comment || "",
+      protocol_json: JSON.stringify(protocol),
+
+      a_sampling: protocol.a_sampling ?? null,
+      w_sampling: protocol.w_sampling ?? null,
+      id_sampling: protocol.id_sampling ?? null,
+
+      admin_settings_json: adminSettings
+        ? JSON.stringify(adminSettings)
+        : null,
+
+      monte_carlo_summary_json: summary
+        ? JSON.stringify(summary)
+        : null,
+
+      monte_carlo_warning_count: summary?.warning_count ?? null,
+      monte_carlo_worst_clamp_pct: summary?.worst_clamp_pct ?? null,
+      monte_carlo_worst_diagnostic: summary?.worst_diagnostic ?? null,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "protocol save failed");
+  }
+
+  return payload;
+}
+
+export async function loadProtocolsFromDB() {
+  const response = await fetch("/api/protocols");
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error || "protocol load failed");
+  }
+
+  return payload.protocols || [];
+}
