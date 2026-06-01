@@ -26,7 +26,7 @@
  * - To change final CSV fields: update buildInteractionResultRow().
  */
 
-import { nowMs, computeID } from "../core/helpers.js";
+import { nowMs, isoNow, computeID } from "../core/helpers.js";
 import { TouchArea } from "../targets/TouchArea.js";
 import { DEFAULT_TOUCH_DIAMETER_PX } from "../core/constants.js";
 
@@ -160,10 +160,10 @@ function computeEffectiveMovement({
     Math.hypot(touchArea.x - from.x, touchArea.y - from.y);
 
   const DmmEff =
-    state.mmPerPx ? DpxEff * state.mmPerPx : null;
-
+    state?.mmPerPx ? DpxEff * state.mmPerPx : null;
+  
   const WaxisEffMm =
-    state.mmPerPx &&
+    state?.mmPerPx &&
     Number.isFinite(effectiveAxisWidth.widthPx)
       ? effectiveAxisWidth.widthPx * state.mmPerPx
       : null;
@@ -262,7 +262,7 @@ function buildInteractionResultRow({
     session_comment: state.current.session_comment,
 
     trial_no: state.current.trial_no,
-    timestamp_iso: new Date().toISOString(),
+    timestamp_iso: isoNow(),
 
     unit: state.current.unit,
     formula: "shannon",

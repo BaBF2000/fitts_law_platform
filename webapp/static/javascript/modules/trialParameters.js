@@ -35,6 +35,7 @@ import {
   computeWFromID,
   computeAFromWAndID,
   convertToPxAndMm,
+  getViewportSize,
 } from "../core/helpers.js";
 
 import { sampleParameter } from "./parameterSampling.js";
@@ -51,14 +52,14 @@ const SHANNON_FORMULA = "shannon";
 /* -------------------------------------------------------------------------- */
 
 function getViewportMinSide() {
-  return Math.min(window.innerWidth, window.innerHeight);
+  return getViewportSize().minSide;
 }
 
 /**
  * Convert planned amplitude from px to mm when calibration is available.
  */
 function getAmmFromApx(Apx, A_in, unit, state) {
-  if (state.mmPerPx) return Apx * state.mmPerPx;
+  if (state?.mmPerPx) return Apx * state.mmPerPx;
   if (unit === "mm") return A_in;
   return null;
 }
@@ -67,7 +68,7 @@ function getAmmFromApx(Apx, A_in, unit, state) {
  * Convert planned target width from px to mm when calibration is available.
  */
 function getWmmFromWpx(Wpx, W_in, unit, state) {
-  if (state.mmPerPx) return Wpx * state.mmPerPx;
+  if (state?.mmPerPx) return Wpx * state.mmPerPx;
   if (unit === "mm") return W_in;
   return null;
 }
@@ -83,7 +84,7 @@ function pxToInputUnit(px, unit, state) {
   }
 
   if (unit === "mm") {
-    return state.mmPerPx
+    return state?.mmPerPx
       ? px * state.mmPerPx
       : null;
   }
@@ -160,8 +161,11 @@ function resolveModeAW(t, state, unit, feasibleW) {
   let A_in = sampleA(t);
   let W_in = sampleW(t, feasibleW);
 
-  const Aconv = convertToPxAndMm(A_in, unit, state.mmPerPx);
-  const Wconv = convertToPxAndMm(W_in, unit, state.mmPerPx);
+  const Aconv =
+    convertToPxAndMm(A_in, unit, state?.mmPerPx);
+
+  const Wconv =
+    convertToPxAndMm(W_in, unit, state?.mmPerPx);
 
   let Apx = Aconv.px;
   let Wpx = Wconv.px;
@@ -182,7 +186,8 @@ function resolveModeIDA(t, state, unit, formula) {
   const ID_in = sampleID(t);
   const A_in = sampleA(t);
 
-  const Aconv = convertToPxAndMm(A_in, unit, state.mmPerPx);
+  const Aconv =
+    convertToPxAndMm(A_in, unit, state?.mmPerPx);
 
   let Apx = Aconv.px;
   let Wpx = NaN;
@@ -190,7 +195,7 @@ function resolveModeIDA(t, state, unit, formula) {
 
   if (unit === "mm") {
     W_in = computeWFromID(Aconv.mm, ID_in, formula);
-    Wpx = state.mmPerPx ? W_in / state.mmPerPx : NaN;
+    Wpx = state?.mmPerPx ? W_in / state.mmPerPx : NaN;
   } else {
     Wpx = computeWFromID(Apx, ID_in, formula);
     W_in = pxToInputUnit(Wpx, unit, state);
@@ -212,7 +217,8 @@ function resolveModeIDW(t, state, unit, formula, feasibleW) {
   const ID_in = sampleID(t);
   let W_in = sampleW(t, feasibleW);
 
-  const Wconv = convertToPxAndMm(W_in, unit, state.mmPerPx);
+  const Wconv =
+    convertToPxAndMm(W_in, unit, state?.mmPerPx);
 
   let Wpx = Wconv.px;
 
@@ -224,7 +230,7 @@ function resolveModeIDW(t, state, unit, formula, feasibleW) {
 
   if (unit === "mm") {
     A_in = computeAFromWAndID(W_in, ID_in, formula);
-    Apx = state.mmPerPx ? A_in / state.mmPerPx : NaN;
+    Apx = state?.mmPerPx ? A_in / state.mmPerPx : NaN;
   } else {
     Apx = computeAFromWAndID(Wpx, ID_in, formula);
     A_in = pxToInputUnit(Apx, unit, state);
@@ -272,7 +278,7 @@ function computePlannedValues({
 }
 
 /* -------------------------------------------------------------------------- */
-/* Public API                                                                  */
+/* Public API                                                                 */
 /* -------------------------------------------------------------------------- */
 
 /**
