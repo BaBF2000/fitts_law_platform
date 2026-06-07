@@ -34,68 +34,35 @@ import * as server from "./core/server.js";
 
 import * as dbg from "./debug/debug.js";
 
-import {
-  initAdminSettingsUI,
-} from "./modules/adminSettingsUI.js";
+import { initAdminSettingsUI } from "./modules/adminSettingsUI.js";
 
-import {
-  initCalibration,
-} from "./modules/calibration.js";
+import { initCalibration } from "./modules/calibration.js";
 
-import {
-  initExperiment,
-} from "./modules/experiment.js";
+import { initExperiment } from "./modules/experiment.js";
 
-import {
-  initSessionDesign,
-} from "./modules/sessionDesign.js";
+import { initSessionDesign } from "./modules/sessionDesign.js";
 
-import {
-  initFingerTouchability,
-} from "./modules/fingerTouchability.js";
+import { initFingerTouchability } from "./modules/fingerTouchability.js";
 
-import {
-  setupExperimentDesignHandlers,
-} from "./modules/protocolDesignHandlers.js";
+import { setupExperimentDesignHandlers } from "./modules/protocolDesignHandlers.js";
 
-import {
-  setupRunHandlers,
-} from "./modules/runHandlers.js";
+import { setupRunHandlers } from "./modules/runHandlers.js";
 
-import {
-  setupExportHandlers,
-} from "./modules/exportHandlers.js";
+import { setupExportHandlers } from "./modules/exportHandlers.js";
 
-import {
-  setupCalibrationHandlers,
-} from "./modules/calibrationHandlers.js";
+import { setupCalibrationHandlers } from "./modules/calibrationHandlers.js";
 
-import {
-  setupTouchabilityHandlers,
-} from "./modules/touchabilityHandlers.js";
+import { setupTouchabilityHandlers } from "./modules/touchabilityHandlers.js";
 
-import {
-  setupCommentToggle,
-} from "./modules/commentHandlers.js";
+import { setupCommentToggle } from "./modules/commentHandlers.js";
 
-import {
-  loadParticipantTouchability,
-} from "./modules/touchabilityRuntime.js";
+import { loadParticipantTouchability } from "./modules/touchabilityRuntime.js";
 
-import {
-  setupIdHints,
-  refreshIdHints,
-} from "./modules/idHints.js";
+import { setupIdHints, refreshIdHints } from "./modules/idHints.js";
 
-import {
-  hideExperimentDesignEditor,
-  hideProtocolList,
-} from "./modules/protocolManager.js";
+import { hideExperimentDesignEditor, hideProtocolList } from "./modules/protocolManager.js";
 
-import {
-  loadCalibration,
-  isCalibrationLikelyValid,
-} from "./core/storage.js";
+import { loadCalibration, isCalibrationLikelyValid } from "./core/storage.js";
 
 /**
  * Application entry point.

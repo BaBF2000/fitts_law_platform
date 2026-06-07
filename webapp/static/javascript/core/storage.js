@@ -51,11 +51,13 @@ export {
   clearTouchabilityForParticipant,
 } from "./storage/touchabilityStorage.js";
 
-export {
-  listProtocols,
-  saveProtocol,
-  loadProtocol,
-  loadProtocolById,
-  deleteProtocolById,
-  clearProtocol,
-} from "./storage/protocolStorage.js";
+/*
+*export {
+*  listProtocols,
+*  saveProtocol,
+*  loadProtocol,
+*  loadProtocolById,
+*  deleteProtocolById,
+*  clearProtocol,
+*} from "./storage/protocolStorage.js";
+*/

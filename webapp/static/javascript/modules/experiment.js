@@ -475,6 +475,8 @@ export function initExperiment(dom, state, ui, server) {
         const last =
           trialRows[trialRows.length - 1];
 
+        state.results.push(...trialRows);
+
         state.results.push(
           buildTrialSummaryRow({
             lastInteractionRow: last,

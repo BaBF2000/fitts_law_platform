@@ -25,10 +25,12 @@ import {
   requestFullscreenSafe,
 } from "../core/helpers.js";
 
-import {
-  saveProtocol,
-  clearProtocol,
-} from "../core/storage.js";
+/*
+*import {
+*  saveProtocol,
+*  clearProtocol,
+*} from "../core/storage.js";
+*/
 
 import {
   loadAdminSettings,
@@ -100,7 +102,7 @@ export function setupExperimentDesignHandlers({
     renderMonteCarloSummary(dom, simulation);
   });
 
-  dom.btnClearProtocol?.addEventListener("click", () => {
+/*  dom.btnClearProtocol?.addEventListener("click", () => {
     clearProtocol();
 
     state.protocolReady = false;
@@ -122,6 +124,31 @@ export function setupExperimentDesignHandlers({
     hideExperimentDesignEditor(dom);
 
     alert("Gespeichertes Protokoll gelöscht.");
+  });
+*/
+
+//alternative, no localstorage of Protocols
+
+  dom.btnClearProtocol?.addEventListener("click", () => {
+    state.protocolReady = false;
+    state.sessionBlocks = [];
+    state.currentProtocol = null;
+    state.protocolName = "";
+    state.protocolComment = "";
+  
+    if (dom.protocolName) {
+      dom.protocolName.value = "";
+    }
+  
+    if (dom.protocolComment) {
+      dom.protocolComment.value = "";
+    }
+  
+    markProtocolStatus(dom, state, false);
+    hideProtocolList(dom);
+    hideExperimentDesignEditor(dom);
+  
+    alert("Aktuelles Protokoll wurde aus dem Editor entfernt.");
   });
 
   dom.buttonSessionConfig?.addEventListener("click", async () => {
@@ -145,11 +172,9 @@ async function saveCurrentProtocol({
   sessionDesign,
   server,
 }) {
-  const protocol =
-    buildProtocolObject(dom, state, sessionDesign);
+  const protocol = buildProtocolObject(dom, state, sessionDesign);
 
-  const check =
-    validateProtocol(protocol, state);
+  const check = validateProtocol(protocol, state);
 
   if (!check.ok) {
     alert(check.message);
@@ -157,15 +182,12 @@ async function saveCurrentProtocol({
     return;
   }
 
-  const protocolWithMonteCarlo =
-    attachMonteCarloSummary(protocol, state);
+  const protocolWithMonteCarlo = attachMonteCarloSummary(protocol, state);
 
-  const monteCarlo =
-    protocolWithMonteCarlo.monte_carlo_summary;
+  const monteCarlo = protocolWithMonteCarlo.monte_carlo_summary;
 
   if (isStronglyDistorted(monteCarlo)) {
-    const ok =
-      confirmStrongDistortion(monteCarlo);
+    const ok = confirmStrongDistortion(monteCarlo);
 
     if (!ok) {
       markProtocolStatus(dom, state, false);
@@ -173,8 +195,8 @@ async function saveCurrentProtocol({
     }
   }
 
-  const saved =
-    saveProtocol(protocolWithMonteCarlo);
+
+/*  const saved = saveProtocol(protocolWithMonteCarlo);
 
   try {
     await server.saveProtocolToDB(
@@ -186,6 +208,30 @@ async function saveCurrentProtocol({
       "Protokoll wurde lokal gespeichert, aber nicht in der Datenbank.\n\n" +
       (err?.message || err)
     );
+  }
+*/
+
+//alternative, no localstorage of Protocols
+  let saved = protocolWithMonteCarlo;
+  
+  try {
+    const response = await server.saveProtocolToDB(
+      protocolWithMonteCarlo,
+      loadAdminSettings()
+    );
+  
+    saved = {
+      ...protocolWithMonteCarlo,
+      db_id: response?.protocol_id ?? null,
+    };
+  } catch (err) {
+    alert(
+      "Protokoll konnte nicht in der Datenbank gespeichert werden.\n\n" +
+      (err?.message || err)
+    );
+  
+    markProtocolStatus(dom, state, false);
+    return;
   }
 
   state.currentProtocol = saved;

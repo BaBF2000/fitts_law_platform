@@ -11,15 +11,17 @@
  * actions from the protocol list UI.
  *
  * Important:
- * This module currently supports both localStorage and SQLite protocols.
- * Later, local protocol support can be removed here without touching main.js.
+* Protocol templates are loaded from SQLite only.
+ * The old localStorage code is kept commented temporarily as migration reference.
+ * Session snapshots remain independent from protocol templates.
  */
 
-import {
+/*import {
   listProtocols,
   loadProtocolById,
   deleteProtocolById,
 } from "../core/storage.js";
+*/
 
 import {
   applyProtocolObject,
@@ -32,6 +34,7 @@ import {
   renderEmptyProtocolList,
 } from "./protocolManager.js";
 
+/*
 function renderLocalProtocolItem(protocol) {
   return `
     <div class="protocolItem" data-source="local" data-id="${protocol.id}">
@@ -51,6 +54,7 @@ function renderLocalProtocolItem(protocol) {
     </div>
   `;
 }
+*/
 
 function renderDbProtocolItem(protocol) {
   let parsed = null;
@@ -88,8 +92,9 @@ export async function renderProtocolList({
 }) {
   if (!dom.protocolListBox) return;
 
-  const localProtocols =
+/*  const localProtocols =
     listProtocols();
+*/
 
   let dbProtocols = [];
 
@@ -100,23 +105,29 @@ export async function renderProtocolList({
     dbProtocols = [];
   }
 
-  if (!localProtocols.length && !dbProtocols.length) {
+//  if (!localProtocols.length && !dbProtocols.length) {
+  if ( !dbProtocols.length) {
     renderEmptyProtocolList(dom);
     return;
   }
 
-  const localHtml =
+/*  const localHtml =
     localProtocols
       .map(renderLocalProtocolItem)
       .join("");
+*/
 
   const dbHtml =
     dbProtocols
       .map(renderDbProtocolItem)
       .join("");
 
-  dom.protocolListBox.innerHTML = `
+/*  dom.protocolListBox.innerHTML = `
     ${localProtocols.length ? `<p class="muted"><b>Lokale Protokolle</b></p>${localHtml}` : ""}
+    ${dbProtocols.length ? `<p class="muted"><b>Datenbank-Protokolle</b></p>${dbHtml}` : ""}
+  `;
+*/
+  dom.protocolListBox.innerHTML = `
     ${dbProtocols.length ? `<p class="muted"><b>Datenbank-Protokolle</b></p>${dbHtml}` : ""}
   `;
 
@@ -145,7 +156,7 @@ function bindProtocolListActions({
 
         const action =
           button.dataset.action;
-
+/*
         if (action === "load-local") {
           handleLoadLocal({
             id,
@@ -164,7 +175,7 @@ function bindProtocolListActions({
             server,
           });
         }
-
+*/
         if (action === "load-db") {
           handleLoadDb({
             id,
@@ -188,6 +199,7 @@ function bindProtocolListActions({
     });
 }
 
+/*
 function handleLoadLocal({
   id,
   dom,
@@ -215,7 +227,9 @@ function handleLoadLocal({
 
   alert("Lokales Protokoll geladen.");
 }
+*/
 
+/*
 function handleDeleteLocal({
   id,
   dom,
@@ -234,7 +248,7 @@ function handleDeleteLocal({
 
   alert("Lokales Protokoll gelöscht.");
 }
-
+*/
 function handleLoadDb({
   id,
   dom,
