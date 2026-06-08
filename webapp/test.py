@@ -2,7 +2,7 @@ from fitts_data import FittsDataClient
 import matplotlib.pyplot as plt
 
 name = "P01"
-session = "S8"
+session = "S1"
 fd = FittsDataClient()
 fig, ax= fd.plot_fitts_regression(
                 participant=name,
