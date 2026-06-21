@@ -2,12 +2,19 @@
 Protocol helpers for the Fitts data framework.
 
 Responsibility:
-Reads and interprets protocol snapshots stored with experiment sessions.
+    Reads and interprets protocol snapshots stored with experiment sessions.
+
+Organigram reference:
+    Persistence & Backend
+    -> Fitts Data Framework
+       -> Protocol Layer
 
 Important:
-Protocol snapshots are stored inside each session.
-This means old sessions remain reproducible even if the original protocol
-template is later changed or deleted.
+    Protocol snapshots are stored inside each session.
+
+    This means old sessions remain reproducible even if the original protocol
+    template is later changed or deleted. The stored protocol snapshot describes
+    the experiment configuration that was active when the session was recorded.
 """
 
 from __future__ import annotations
@@ -15,9 +22,77 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .queries import (
-    get_protocol_snapshot,
-)
+from .queries import get_protocol_snapshot
+
+
+def _optional_str(value: Any) -> str | None:
+    """
+    Convert a value to string if it is present.
+
+    Args:
+        value:
+            Raw value extracted from the protocol snapshot.
+
+    Returns:
+        String representation of the value, or None if the value is missing.
+    """
+    if value is None:
+        return None
+
+    return str(value)
+
+
+def _first_existing(
+    source: dict[str, Any],
+    keys: tuple[str, ...],
+) -> Any:
+    """
+    Return the first existing value from a dictionary.
+
+    This helper is useful because protocol snapshots may contain both snake_case
+    and camelCase keys depending on the application version.
+
+    Args:
+        source:
+            Dictionary to read from.
+        keys:
+            Possible key names.
+
+    Returns:
+        First non-empty value, or None.
+    """
+    for key in keys:
+        value = source.get(key)
+
+        if value is not None:
+            return value
+
+    return None
+
+
+def _unique_strings(values: list[Any]) -> list[str]:
+    """
+    Return unique string values while preserving their original order.
+
+    Args:
+        values:
+            Raw values extracted from protocol blocks.
+
+    Returns:
+        A list of unique string values.
+    """
+    result: list[str] = []
+
+    for value in values:
+        text = _optional_str(value)
+
+        if text is None:
+            continue
+
+        if text not in result:
+            result.append(text)
+
+    return result
 
 
 def get_protocol(
@@ -27,7 +102,19 @@ def get_protocol(
     session_id: int | None = None,
 ) -> dict[str, Any] | None:
     """
-    Return the protocol snapshot as a dictionary.
+    Return the stored protocol snapshot as a dictionary.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        Parsed protocol dictionary, or None if the snapshot is missing or
+        invalid.
     """
     raw = get_protocol_snapshot(
         participant=participant,
@@ -57,6 +144,20 @@ def get_blocks(
 ) -> list[dict[str, Any]]:
     """
     Return protocol block definitions.
+
+    The function supports multiple possible key names for compatibility with
+    different protocol snapshot versions.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        A list of protocol block dictionaries.
     """
     protocol = get_protocol(
         participant=participant,
@@ -64,7 +165,17 @@ def get_blocks(
         session_id=session_id,
     )
 
-    blocks = protocol.get("sessionBlocks") if protocol else None
+    if not protocol:
+        return []
+
+    blocks = _first_existing(
+        protocol,
+        (
+            "sessionBlocks",
+            "session_blocks",
+            "blocks",
+        ),
+    )
 
     if not isinstance(blocks, list):
         return []
@@ -84,6 +195,17 @@ def get_sampling(
 ) -> dict[str, str | None]:
     """
     Return sampling settings from the stored protocol snapshot.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        Dictionary containing A, W and ID sampling modes.
     """
     protocol = get_protocol(
         participant=participant,
@@ -99,9 +221,15 @@ def get_sampling(
         }
 
     return {
-        "a_sampling": protocol.get("a_sampling"),
-        "w_sampling": protocol.get("w_sampling"),
-        "id_sampling": protocol.get("id_sampling"),
+        "a_sampling": _optional_str(
+            _first_existing(protocol, ("a_sampling", "aSampling"))
+        ),
+        "w_sampling": _optional_str(
+            _first_existing(protocol, ("w_sampling", "wSampling"))
+        ),
+        "id_sampling": _optional_str(
+            _first_existing(protocol, ("id_sampling", "idSampling"))
+        ),
     }
 
 
@@ -113,6 +241,17 @@ def get_protocol_name(
 ) -> str | None:
     """
     Return the stored protocol name.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        Protocol name, or None if unavailable.
     """
     protocol = get_protocol(
         participant=participant,
@@ -123,10 +262,15 @@ def get_protocol_name(
     if not protocol:
         return None
 
-    return (
-        protocol.get("protocol_name")
-        or protocol.get("protocolName")
-        or protocol.get("name")
+    return _optional_str(
+        _first_existing(
+            protocol,
+            (
+                "protocol_name",
+                "protocolName",
+                "name",
+            ),
+        )
     )
 
 
@@ -138,6 +282,17 @@ def get_protocol_comment(
 ) -> str | None:
     """
     Return the stored protocol comment.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        Protocol comment, or None if unavailable.
     """
     protocol = get_protocol(
         participant=participant,
@@ -148,10 +303,15 @@ def get_protocol_comment(
     if not protocol:
         return None
 
-    return (
-        protocol.get("protocol_comment")
-        or protocol.get("protocolComment")
-        or protocol.get("comment")
+    return _optional_str(
+        _first_existing(
+            protocol,
+            (
+                "protocol_comment",
+                "protocolComment",
+                "comment",
+            ),
+        )
     )
 
 
@@ -162,7 +322,18 @@ def get_block_count(
     session_id: int | None = None,
 ) -> int:
     """
-    Return number of protocol blocks.
+    Return the number of protocol blocks.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        Number of valid protocol block definitions.
     """
     return len(
         get_blocks(
@@ -181,20 +352,39 @@ def get_shapes(
 ) -> list[str]:
     """
     Return unique target shapes used by the protocol.
+
+    The function supports multiple key names for compatibility.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        List of unique target shape names.
     """
-    shapes = []
+    values: list[Any] = []
 
     for block in get_blocks(
         participant=participant,
         session=session,
         session_id=session_id,
     ):
-        shape = block.get("shape")
+        values.append(
+            _first_existing(
+                block,
+                (
+                    "shape",
+                    "target_shape",
+                    "targetShape",
+                ),
+            )
+        )
 
-        if shape and shape not in shapes:
-            shapes.append(str(shape))
-
-    return shapes
+    return _unique_strings(values)
 
 
 def get_param_modes(
@@ -205,17 +395,116 @@ def get_param_modes(
 ) -> list[str]:
     """
     Return unique parameter modes used by the protocol.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        List of unique parameter modes.
     """
-    modes = []
+    values: list[Any] = []
 
     for block in get_blocks(
         participant=participant,
         session=session,
         session_id=session_id,
     ):
-        mode = block.get("param_mode")
+        values.append(
+            _first_existing(
+                block,
+                (
+                    "param_mode",
+                    "paramMode",
+                    "mode",
+                ),
+            )
+        )
 
-        if mode and mode not in modes:
-            modes.append(str(mode))
+    return _unique_strings(values)
 
-    return modes
+
+def get_unit(
+    *,
+    participant: str | None = None,
+    session: str | None = None,
+    session_id: int | None = None,
+) -> str | None:
+    """
+    Return the unit setting stored in the protocol snapshot.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        Unit string, for example "px", "mm" or "relative", or None.
+    """
+    protocol = get_protocol(
+        participant=participant,
+        session=session,
+        session_id=session_id,
+    )
+
+    if not protocol:
+        return None
+
+    return _optional_str(
+        _first_existing(
+            protocol,
+            (
+                "unit",
+                "protocol_unit",
+                "protocolUnit",
+            ),
+        )
+    )
+
+
+def get_formula(
+    *,
+    participant: str | None = None,
+    session: str | None = None,
+    session_id: int | None = None,
+) -> str | None:
+    """
+    Return the Fitts' Law formula setting stored in the protocol snapshot.
+
+    Args:
+        participant:
+            Optional participant identifier.
+        session:
+            Optional session code.
+        session_id:
+            Optional internal database session ID.
+
+    Returns:
+        Formula identifier, or None if unavailable.
+    """
+    protocol = get_protocol(
+        participant=participant,
+        session=session,
+        session_id=session_id,
+    )
+
+    if not protocol:
+        return None
+
+    return _optional_str(
+        _first_existing(
+            protocol,
+            (
+                "formula",
+                "id_formula",
+                "idFormula",
+            ),
+        )
+    )

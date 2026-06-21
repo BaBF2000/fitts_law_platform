@@ -36,8 +36,13 @@ import {
   MIN_AMPLITUDE_MARGIN_PX,
 } from "./constants.js";
 
+// localStorage key for editable admin constraint settings.
+// Version suffix allows future migration if the stored structure changes.
 const ADMIN_SETTINGS_KEY = "fitts_admin_settings_v1";
 
+// Default editable constraint values.
+// These values are initialized from global constants and are used whenever no
+// valid admin settings are stored in localStorage.
 export const DEFAULT_ADMIN_SETTINGS = {
   minVisibleTargetPx: MIN_VISIBLE_TARGET_PX,
   touchSafetyFactor: TOUCH_SAFETY_FACTOR,
@@ -46,6 +51,30 @@ export const DEFAULT_ADMIN_SETTINGS = {
   defaultRequiredOverlap: DEFAULT_REQUIRED_OVERLAP,
 };
 
+/**
+ * Validate and normalize editable admin settings.
+ *
+ * Args:
+ *   settings: Raw settings object loaded from localStorage or received from
+ *     the admin settings UI.
+ *
+ * Returns:
+ *   Object containing numeric, validated settings. Invalid, missing or
+ *   out-of-range values are replaced with DEFAULT_ADMIN_SETTINGS values.
+ *
+ * Side effects:
+ *   None. This function only returns a cleaned copy.
+ *
+ * Validation rules:
+ *   - minVisibleTargetPx must be > 0.
+ *   - touchSafetyFactor must be > 0.
+ *   - maxTargetSizeRatio must be in the range (0, 1].
+ *   - minAmplitudeMarginPx must be >= 0.
+ *   - defaultRequiredOverlap must be in the range [0, 1].
+ *
+ * Related modules:
+ *   The cleaned settings are later interpreted by experimentConstraints.js.
+ */
 function sanitizeAdminSettings(settings = {}) {
   return {
     minVisibleTargetPx:
@@ -82,6 +111,20 @@ function sanitizeAdminSettings(settings = {}) {
   };
 }
 
+/**
+ * Load editable admin settings from localStorage.
+ *
+ * Returns:
+ *   Object containing sanitized admin settings. If no settings are stored, or
+ *   if parsing fails, a copy of DEFAULT_ADMIN_SETTINGS is returned.
+ *
+ * Side effects:
+ *   Reads from localStorage.
+ *
+ * Failure behavior:
+ *   Invalid JSON, unavailable localStorage or malformed settings are handled
+ *   silently by returning default settings.
+ */
 export function loadAdminSettings() {
   try {
     const raw = localStorage.getItem(ADMIN_SETTINGS_KEY);
@@ -96,13 +139,52 @@ export function loadAdminSettings() {
   }
 }
 
+/**
+ * Save editable admin settings to localStorage.
+ *
+ * Args:
+ *   settings: Raw settings object from the admin settings UI.
+ *
+ * Returns:
+ *   Object containing the sanitized settings that were actually stored.
+ *
+ * Side effects:
+ *   Writes the sanitized settings to localStorage.
+ *
+ * Important:
+ *   The function always sanitizes before saving, so invalid UI values cannot be
+ *   persisted directly.
+ */
 export function saveAdminSettings(settings) {
   const cleaned = sanitizeAdminSettings(settings);
-  localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(cleaned));
+
+  try {
+    localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(cleaned));
+  } catch {
+    // Ignore persistence failures and still return the sanitized settings.
+  }
+
   return cleaned;
 }
 
+/**
+ * Remove saved admin settings and return defaults.
+ *
+ * Returns:
+ *   Object containing a fresh copy of DEFAULT_ADMIN_SETTINGS.
+ *
+ * Side effects:
+ *   Removes ADMIN_SETTINGS_KEY from localStorage.
+ *
+ * Related usage:
+ *   Used by the admin settings UI reset action.
+ */
 export function clearAdminSettings() {
-  localStorage.removeItem(ADMIN_SETTINGS_KEY);
+  try {
+    localStorage.removeItem(ADMIN_SETTINGS_KEY);
+  } catch {
+    // Ignore persistence failures and still return defaults.
+  }
+
   return { ...DEFAULT_ADMIN_SETTINGS };
 }

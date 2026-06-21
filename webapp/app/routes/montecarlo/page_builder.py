@@ -8,15 +8,24 @@ Organigram reference:
      -> Page Rendering
 
 Responsibility:
-Builds the full HTML page for the Monte Carlo dashboard.
+Builds the full HTML page for the Monte Carlo dashboard
+
+This module contains:
+- dashboard HTML structure,
+- inline CSS for the dashboard layout,
+- inline JavaScript for protocol loading and simulation controls.
 
 Important:
-This file still contains inline HTML and JavaScript.
-Later, this can be moved into:
+This module does not perform Monte Carlo simulation in Python. The simulation
+is executed in the browser by importing frontend functions from
+/static/javascript/modules/monteCarlo.js
+
+Design note:
+This file still contains inline HTML, CSS and JavaScript. Later, this can be
+split into:
 - templates/montecarlo_dashboard.html
 - static/javascript/dashboard/monteCarloDashboard.js
 """
-
 from __future__ import annotations
 
 
@@ -27,7 +36,33 @@ def build_montecarlo_dashboard_page(
 ) -> str:
     """
     Build the full Monte Carlo dashboard HTML page.
+
+    Args:
+        qs (str): Admin query string, usually used to preserve ?token=...
+            in dashboard and export links
+        session_rows_html (str): Pre-rendered HTML table rows for recently saved
+            sessions. Usually built by session_rows.build_session_rows_html()
+
+    Returns:
+        str: Complete HTML document for the Monte Carlo dashboard
+
+    Side effects:
+        None. This function only returns an HTML string
+
+    Related modules:
+        Called by app.routes.montecarlo_dashboard.dashboard_montecarlo()
+        Session rows are created in app.routes.montecarlo.session_rows
+        Simulation functions are imported in the generated page from
+        static/javascript/modules/monteCarlo.js
+
+    Important:
+        Dynamic HTML fragments passed into this function must already be escaped
+        by the caller where necessary
     """
+
+    # The page is returned as one complete HTML string because the current
+    # dashboard is generated without a Jinja template
+    # Keep dynamic values escaped before passing them into this function
     return f"""
     <!doctype html>
     <html lang="de">
@@ -503,6 +538,7 @@ def build_montecarlo_dashboard_page(
 
           let loadedProtocol = null;
 
+          // Read a numeric value from a dashboard input field
           function val(id) {{
             return Number(document.getElementById(id).value);
           }}
@@ -516,6 +552,8 @@ def build_montecarlo_dashboard_page(
             `;
           }}
 
+          // Run a Monte Carlo analysis for every block of the loaded protocol and show
+          // clamp/diagnostic values in the block diagnostics table
           function renderBlockDiagnostics(protocol) {{
             const viewportW = val("viewportW") || window.innerWidth;
             const viewportH = val("viewportH") || window.innerHeight;
@@ -658,6 +696,7 @@ def build_montecarlo_dashboard_page(
               : `<tr><td colspan="10">Keine Blöcke im Protokoll.</td></tr>`;
           }}
 
+          // Build the configuration object expected by runMonteCarloW()
           function getSimulationConfig(samplingOverride = null) {{
             const viewportW = val("viewportW") || window.innerWidth;
             const viewportH = val("viewportH") || window.innerHeight;
@@ -793,6 +832,7 @@ def build_montecarlo_dashboard_page(
               `).join("");
           }}
 
+          // Render the main dashboard sections from one Monte Carlo simulation result
           function render(sim) {{
             const m = sim.meta;
             const c = sim.counts;

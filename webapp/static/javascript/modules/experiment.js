@@ -40,6 +40,7 @@
  * - To change local CSV export: edit experimentExport.js.
  * - To change final summary rendering: edit experimentSummary.js.
  */
+
 import {
   deriveSessionTargetMode,
   getSafeTargetRadiusPx,
@@ -92,18 +93,54 @@ import { TargetFactory } from "../targets/TargetFactory.js";
 import { TargetDebugOverlay } from "../targets/TargetDebugOverlay.js";
 import { createTrialPairEngine } from "./trialPairEngine.js";
 
-
-
+/**
+ * Initialize the experiment runtime orchestrator.
+ *
+ * Args:
+ *   dom: Centralized DOM reference object from getDom().
+ *   state: Shared application state.
+ *   ui: Core UI helper module, expected to provide show().
+ *   server: Backend communication layer. Currently passed for orchestration
+ *     compatibility, but not used directly in this module.
+ *
+ * Returns:
+ *   Object containing bind(), which registers runtime event handlers and
+ *   returns the public experiment runtime API.
+ *
+ * Side effects:
+ *   Creates the target debug overlay controller and prepares runtime closures.
+ *
+ * Responsibility:
+ *   Coordinates trial generation, target placement, pair-trial execution,
+ *   result collection, summary rendering and CSV export.
+ */
 export function initExperiment(dom, state, ui, server) {
+  // Debug overlay controller used only when targetDebug=1 is present in the URL.
   const targetDebugOverlay = new TargetDebugOverlay();
 
+  // URL flag for visualizing target geometry during development.
   const showTargetDebug =
     new URLSearchParams(location.search).get("targetDebug") === "1";
 
+  // Pair engine is created when a run starts because it depends on the current
+  // runtime callbacks and state.
   let pairEngine = null;
 
   /**
    * Create or reuse a DOM target element.
+   *
+   * Args:
+   *   id: DOM id for the target element.
+   *
+   * Returns:
+   *   Existing or newly created target DOM element.
+   *
+   * Side effects:
+   *   May create a div, assign id/className and append it to dom.app.
+   *
+   * Purpose:
+   *   The pair engine needs two runtime target elements, usually targetA and
+   *   targetB.
    */
   function createTargetElement(id) {
     let el = document.getElementById(id);
@@ -119,7 +156,19 @@ export function initExperiment(dom, state, ui, server) {
   }
 
   /**
-   * Reset runtime state before starting a new run.
+   * Reset runtime state before starting a new run or after abort/restart.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Delegates runtime cleanup to experimentRuntime.js.
+   *
+   * Cleared data:
+   *   - timers
+   *   - active pair targets
+   *   - debug overlay
+   *   - runtime result state
    */
   function resetRun() {
     resetRunState({
@@ -132,18 +181,29 @@ export function initExperiment(dom, state, ui, server) {
 
   /**
    * Build the full trial list from all session blocks.
+   *
+   * Returns:
+   *   Array of trial definitions, or null if trial generation fails.
+   *
+   * Side effects:
+   *   May show German alert messages for invalid setup states.
+   *
+   * Behavior:
+   *   - Reads the current distance unit from the UI.
+   *   - Prevents mm mode without calibration.
+   *   - Delegates trial-list construction to buildExperimentTrials().
    */
   function buildTrials() {
     const unit =
       dom.distanceMode?.value || "relative";
-  
+
     if (unit === "mm" && !state.mmPerPx) {
       alert(
         "Einheit mm gewählt, aber nicht kalibriert. Bitte kalibrieren oder px/rel wählen."
       );
       return null;
     }
-  
+
     const result =
       buildExperimentTrials({
         blocks: state.sessionBlocks,
@@ -151,17 +211,29 @@ export function initExperiment(dom, state, ui, server) {
         unit,
         formula: "shannon",
       });
-  
+
     if (!result.ok) {
       alert(result.message);
       return null;
     }
-  
+
     return result.trials;
   }
 
   /**
-   * Start trial timeout if configured.
+   * Start a trial timeout if configured.
+   *
+   * Args:
+   *   ms: Timeout duration in milliseconds.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Delegates timeout registration to experimentRuntime.js.
+   *
+   * Behavior:
+   *   When the timeout fires, the current trial receives a "timeout" error.
    */
   function setTrialTimeout(ms) {
     setTrialTimeoutState({
@@ -173,6 +245,16 @@ export function initExperiment(dom, state, ui, server) {
 
   /**
    * Register one trial error.
+   *
+   * Args:
+   *   reason: Error reason string, for example "miss", "wrong_target" or
+   *     "timeout".
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Updates current-trial error counters and global error count.
    */
   function markError(reason) {
     if (!state.current) return;
@@ -184,64 +266,85 @@ export function initExperiment(dom, state, ui, server) {
 
   /**
    * Start the next trial or finish the run.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Clears timeout, may clear target pair, prepares trial geometry, creates
+   *   targets, starts the pair engine, updates HUD and starts timeout.
+   *
+   * Workflow:
+   *   1. Stop any previous trial timeout.
+   *   2. Finish the run if no trials remain.
+   *   3. Prepare trial parameters.
+   *   4. Compute safe placement and target geometry.
+   *   5. Build runtime trial context.
+   *   6. Start the two-target pair trial.
    */
   function nextTrial() {
     clearTimeoutIfNeeded(state);
-  
+
     if (state.trialIndex + 1 >= state.trials.length) {
       finishRun();
       return;
     }
-  
+
     pairEngine?.clearPair?.();
-  
+
     state.trialIndex++;
-  
+
     const t = state.trials[state.trialIndex];
-  
+
     const prepared =
       prepareTrial({
         trial: t,
         state,
       });
-  
+
     const {
       resolved,
       paramMode,
-  
+
       A_in,
       W_in,
       ID_in,
-  
+
       Wpx,
-  
+
       viewportW,
       viewportH,
-  
+
       trialShape,
-  
+
       requiredOverlap,
       touchDiameterPx,
     } = prepared;
-  
+
     let Apx = prepared.Apx;
-  
+
+    // The previous target is either the last trial position or the screen center
+    // for the first trial.
     const prev = state.current
       ? { x: state.current.x, y: state.current.y }
       : { x: viewportW / 2, y: viewportH / 2 };
-  
+
+    // Conservative radius used by placement to keep the target safely inside
+    // the viewport and avoid overlap.
     const safeRadiusPx =
       getSafeTargetRadiusPx(trialShape, Wpx);
-  
+
     const prevRadiusPx = safeRadiusPx;
-  
+
+    // Ensure that amplitude is large enough to avoid target overlap.
     const minApx = getMinAmplitudePx({
       shape: trialShape,
       targetSizePx: Wpx,
     });
-  
+
     Apx = Math.max(Apx, minApx);
-  
+
+    // Compute the next target center under viewport and overlap constraints.
     const next =
       computeNextTargetPosition({
         trialShape,
@@ -254,30 +357,33 @@ export function initExperiment(dom, state, ui, server) {
         viewportW,
         viewportH,
       });
-  
+
+    // Actual planned amplitude after placement. This may differ from the raw
+    // requested Apx when placement constraints modified the geometry.
     const ApxPlannedActual = Math.hypot(
       next.x - prev.x,
       next.y - prev.y
     );
-  
+
     const Amm = state.mmPerPx
       ? ApxPlannedActual * state.mmPerPx
       : t.unit === "mm"
         ? A_in
         : null;
-  
+
     const Wmm = state.mmPerPx
       ? Wpx * state.mmPerPx
       : t.unit === "mm"
         ? W_in
         : null;
-  
+
     const ID_planned =
       Number.isFinite(Amm) &&
       Number.isFinite(Wmm)
         ? computeID(Amm, Wmm, "shannon")
         : null;
-  
+
+    // Create both target instances from the safe, resolved geometry.
     const targetA = TargetFactory.create({
       shape: trialShape,
       x: prev.x,
@@ -286,7 +392,7 @@ export function initExperiment(dom, state, ui, server) {
       touchDiameterPx,
       requiredOverlap,
     });
-  
+
     const targetB = TargetFactory.create({
       shape: trialShape,
       x: next.x,
@@ -295,7 +401,8 @@ export function initExperiment(dom, state, ui, server) {
       touchDiameterPx,
       requiredOverlap,
     });
-  
+
+    // Width of the active target measured along the planned movement axis.
     const plannedAxisWidth =
       targetB.getWidthOnMovementAxis(
         prev.x,
@@ -303,7 +410,7 @@ export function initExperiment(dom, state, ui, server) {
         next.x,
         next.y
       );
-  
+
     if (showTargetDebug) {
       targetDebugOverlay.drawABCD({
         a: { x: prev.x, y: prev.y },
@@ -312,38 +419,40 @@ export function initExperiment(dom, state, ui, server) {
         d: plannedAxisWidth.d,
       });
     }
-  
+
+    // Build the base metadata that will be reused for interaction-level result
+    // rows and the trial summary row.
     const currentBase =
       buildCurrentTrialContext({
         dom,
         state,
-  
+
         trial: t,
         trialShape,
-  
+
         paramMode,
-  
+
         A_in,
         W_in,
         ID_in,
-  
+
         ApxPlannedActual,
         Wpx,
-  
+
         Amm,
         Wmm,
-  
+
         ID_planned,
-  
+
         plannedAxisWidth,
-  
+
         prev,
         next,
-  
+
         touchDiameterPx,
         requiredOverlap,
       });
-  
+
     state.current = {
       ...currentBase,
       targetObj: targetB,
@@ -351,7 +460,8 @@ export function initExperiment(dom, state, ui, server) {
       error_reasons: [],
       clicks_before_hit: 0,
     };
-  
+
+    // Start the alternating target-pair engine for this trial.
     pairEngine.startPairTrial({
       trial: t,
       targetA,
@@ -362,28 +472,39 @@ export function initExperiment(dom, state, ui, server) {
       next,
       currentBase,
     });
-  
+
     if (dom.crosshair) {
       dom.crosshair.style.display = "block";
     }
-  
+
     if (dom.hudLeft) {
       const idTxt = Number.isFinite(ID_planned)
         ? ID_planned.toFixed(2)
         : "—";
-  
+
       dom.hudLeft.textContent =
         `Versuch ${t.trial_no} / ${state.trials.length} • ID ${idTxt}`;
     }
-  
+
     const timeoutMs =
       Number(dom.timeoutMs?.value) || 0;
-  
+
     setTrialTimeout(timeoutMs);
   }
 
   /**
-   * Finish the experiment run and show summary.
+   * Finish the experiment run and show the final summary.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Clears timeout and targets, resets run UI state, renders summary, prepares
+   *   backend-save button and switches to the end screen.
+   *
+   * Important:
+   *   state.savedToPC is reset here so the completed session can be saved once
+   *   after the run ends.
    */
   function finishRun() {
     clearTimeoutIfNeeded(state);
@@ -419,6 +540,19 @@ export function initExperiment(dom, state, ui, server) {
 
   /**
    * Move the crosshair with the pointer.
+   *
+   * Args:
+   *   e: Mouse or touch event.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Updates crosshair left/top position.
+   *
+   * Purpose:
+   *   Gives visual feedback for the current pointer/touch location during the
+   *   experiment run.
    */
   function onPointerMove(e) {
     if (!dom.crosshair) return;
@@ -431,6 +565,15 @@ export function initExperiment(dom, state, ui, server) {
 
   /**
    * Forward pointer events to the pair engine.
+   *
+   * Args:
+   *   e: Mouse or touch start event.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Delegates hit validation and interaction recording to trialPairEngine.js.
    */
   function onPointerDown(e) {
     pairEngine?.handlePointerDown(e);
@@ -438,6 +581,12 @@ export function initExperiment(dom, state, ui, server) {
 
   /**
    * Download locally collected results as CSV.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Delegates CSV creation and download to experimentExport.js.
    */
   function downloadCSV() {
     downloadExperimentCSV({
@@ -448,6 +597,21 @@ export function initExperiment(dom, state, ui, server) {
 
   /**
    * Start a full experiment run.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Resets previous runtime state, creates the pair engine, builds trials,
+   *   updates UI state and starts the first trial.
+   *
+   * Workflow:
+   *   1. Reset old run state.
+   *   2. Derive session target mode from blocks.
+   *   3. Switch UI to run mode.
+   *   4. Create the pair engine with callbacks.
+   *   5. Build trials.
+   *   6. Start the first trial.
    */
   function startRun() {
     resetRun();
@@ -471,12 +635,15 @@ export function initExperiment(dom, state, ui, server) {
       targetDebugOverlay: showTargetDebug ? targetDebugOverlay : null,
       onError: markError,
 
+      // Called by the pair engine after all interactions for one trial are done.
       onTrialFinished: ({ trialRows, summary }) => {
         const last =
           trialRows[trialRows.length - 1];
 
+        // Store all interaction-level rows.
         state.results.push(...trialRows);
 
+        // Store one additional trial-level summary row.
         state.results.push(
           buildTrialSummaryRow({
             lastInteractionRow: last,
@@ -509,6 +676,20 @@ export function initExperiment(dom, state, ui, server) {
 
   /**
    * Bind runtime input handlers.
+   *
+   * Returns:
+   *   Public experiment runtime API:
+   *   - startRun()
+   *   - resetRun()
+   *   - downloadCSV()
+   *
+   * Side effects:
+   *   Registers mouse/touch listeners on dom.app and a document-level touchend
+   *   listener to reduce accidental double-tap behavior.
+   *
+   * Important:
+   *   The returned API is used by external handler modules such as runHandlers.js
+   *   and exportHandlers.js.
    */
   function bind() {
     dom.app?.addEventListener(
@@ -535,6 +716,7 @@ export function initExperiment(dom, state, ui, server) {
       { passive: false }
     );
 
+    // Prevent accidental double-tap zoom on touch devices.
     let lastTouchEnd = 0;
 
     document.addEventListener(

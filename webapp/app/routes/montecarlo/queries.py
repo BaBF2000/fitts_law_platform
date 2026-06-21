@@ -22,14 +22,33 @@ from app.db import db
 
 def load_recent_sessions(limit: int = 50) -> list[dict]:
     """
-    Load recent sessions with Monte-Carlo metadata.
+    Load recent saved sessions with stored Monte Carlo metadata
 
-    The protocol snapshot is included so the frontend dashboard can reload
-    the exact protocol used during the saved session.
+    Args:
+        limit (int): Maximum number of sessions to return. Defaults to 50
+
+    Returns:
+        list[dict]: Recent session rows ordered by started_at descending. Each
+        row contains session identifiers, protocol metadata and stored Monte
+        Carlo summary fields
+
+    Database access:
+        Reads from the session table only
+
+    Side effects:
+        None. This function only opens a database connection and reads data
+
+    Important:
+        The protocol_json snapshot is included so the dashboard can reopen or
+        inspect the exact protocol configuration that belonged to the saved
+        session. This function does not perform a new Monte Carlo simulation
     """
     with db() as conn:
         cur = conn.cursor()
 
+        # Load only session-level Monte Carlo fields.
+        # The dashboard uses these stored values for overview and navigation,
+        # not for recalculating the Monte Carlo simulation.
         cur.execute(
             """
             SELECT

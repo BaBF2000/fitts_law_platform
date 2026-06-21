@@ -12,14 +12,57 @@
  * Important:
  * This module only creates markup.
  * It does not read UI values or update application state.
+ *
+ * Related modules:
+ * - sessionBlockState.js reads the values from the generated DOM fields.
+ * - sessionDesign.js inserts this template into the editor.
+ * - protocol.js later validates the protocol configuration.
  */
 
+/**
+ * Build the HTML template for one editable session block.
+ *
+ * Args:
+ *   idx: Zero-based block index used to generate unique DOM element IDs.
+ *   block: Block configuration object containing shape, parameter mode,
+ *     parameter values, random flags and required overlap.
+ *
+ * Returns:
+ *   HTML string for one session block editor row.
+ *
+ * Side effects:
+ *   None. This function only returns markup.
+ *
+ * Generated controls:
+ *   - target shape selector
+ *   - parameter mode selector
+ *   - A input with random toggle
+ *   - W input with random toggle
+ *   - ID input with random toggle
+ *   - required overlap input
+ *   - remove button
+ *
+ * Important:
+ *   The generated IDs follow the pattern blk_<idx>_<suffix>. Other modules rely
+ *   on this naming convention to read values and bind event handlers.
+ */
 export function blockTemplate(idx, block) {
+  /**
+   * Build a unique DOM id for a field inside this block.
+   *
+   * Args:
+   *   suffix: Field-specific suffix, for example "shape" or "random_A".
+   *
+   * Returns:
+   *   DOM id string in the form blk_<idx>_<suffix>.
+   */
   const id = (suffix) => `blk_${idx}_${suffix}`;
 
+  // Default to circular targets if no shape was stored for the block.
   const shape =
     block.shape ?? "circle";
 
+  // Default overlap requires the full effective hit area unless specified.
   const requiredOverlap =
     block.required_overlap ?? "1.0";
 
@@ -101,6 +144,28 @@ export function blockTemplate(idx, block) {
   `;
 }
 
+/**
+ * Build the HTML template for one parameter input field.
+ *
+ * Args:
+ *   id: Helper function that creates block-local DOM ids.
+ *   label: Visible parameter label, for example "A", "W" or "ID".
+ *   inputId: Input suffix used in the DOM id.
+ *   randomId: Random-toggle suffix used in the DOM id.
+ *   value: Current input value.
+ *   random: Whether the random toggle should be marked active.
+ *   placeholder: Placeholder text shown inside the input field.
+ *
+ * Returns:
+ *   HTML string for one parameter field with a random toggle button.
+ *
+ * Side effects:
+ *   None. This function only returns markup.
+ *
+ * Important:
+ *   Random state is stored in data-active instead of a checkbox. The editor
+ *   logic later reads this value through sessionBlockState.js.
+ */
 function parameterFieldTemplate({
   id,
   label,

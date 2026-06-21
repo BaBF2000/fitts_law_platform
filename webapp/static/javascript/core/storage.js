@@ -34,17 +34,21 @@
  * - Device compatibility checks:
  *     storage/deviceSignature.js
  */
+
+// Device signature and compatibility checks
 export {
   getDeviceSignature,
   isCalibrationLikelyValid,
 } from "./storage/deviceSignature.js";
 
+// Screen calibration persistence
 export {
   loadCalibration,
   saveCalibration,
   clearCalibration,
 } from "./storage/calibrationStorage.js";
 
+// Participant-specific touchability persistence
 export {
   saveTouchabilityForParticipant,
   loadTouchabilityForParticipant,
@@ -52,12 +56,16 @@ export {
 } from "./storage/touchabilityStorage.js";
 
 /*
-*export {
-*  listProtocols,
-*  saveProtocol,
-*  loadProtocol,
-*  loadProtocolById,
-*  deleteProtocolById,
-*  clearProtocol,
-*} from "./storage/protocolStorage.js";
-*/
+ * Local protocol persistence is currently disabled because protocol templates
+ * are stored through the backend API in core/server.js.
+ *
+ * Keep protocolStorage.js only as a legacy/fallback implementation.
+ */
+// export {
+//   listProtocols,
+//   saveProtocol,
+//   loadProtocol,
+//   loadProtocolById,
+//   deleteProtocolById,
+//   clearProtocol,
+// } from "./storage/protocolStorage.js";

@@ -28,7 +28,28 @@
 
 
 /**
- * Collects contextual device and environment information.
+ * Collect contextual device and browser information.
+ *
+ * Returns:
+ *   Object containing normalized metadata about browser identity, display size,
+ *   viewport size, device pixel ratio, input capabilities, performance signals,
+ *   accessibility preferences and locale information.
+ *
+ * Side effects:
+ *   None. This function only reads browser and environment properties.
+ *
+ * Notes:
+ *   Some values may be null because not all browsers expose the same APIs.
+ *   Values are captured at call time, so viewport-dependent fields may change
+ *   after resizing, fullscreen changes or orientation changes.
+ *
+ * Important:
+ *   The collected values are descriptive metadata for later analysis and
+ *   reproducibility. They should not directly control experiment behavior.
+ *
+ * Related modules:
+ *   Used by core/server.js when saving experiment results to the backend.
+ *   Matching fields are stored in the SQLite trial/session schema and CSV export.
  */
 export function getDeviceContext() {
   const nav = navigator;
@@ -41,6 +62,7 @@ export function getDeviceContext() {
   const ua = nav.userAgent || "";
 
   // Simple heuristic to flag mobile user agents
+  // This is descriptive only and should not be used as a strict device classifier
   const isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
 
   // ------------------------------------------------------------
@@ -51,7 +73,9 @@ export function getDeviceContext() {
   const screenW = window.screen?.width ?? null;
   const screenH = window.screen?.height ?? null;
 
-  // Current viewport size (important for Fitts scaling)
+  // Current viewport size in CSS pixels.
+  // These values are relevant for target placement and later interpretation of
+  // Fitts parameters, especially on large touch displays.
   const viewportW = window.innerWidth;
   const viewportH = window.innerHeight;
 
@@ -66,7 +90,8 @@ export function getDeviceContext() {
   const maxTouchPoints = nav.maxTouchPoints ?? 0;
   const touchSupport = maxTouchPoints > 0 || ("ontouchstart" in window);
 
-  // Pointer precision & hover capability
+  // Pointer precision and hover capability as reported by CSS media queries.
+  // Values may be null if matchMedia is not available.
   const coarsePointer =
     window.matchMedia?.("(pointer: coarse)")?.matches ?? null;
 

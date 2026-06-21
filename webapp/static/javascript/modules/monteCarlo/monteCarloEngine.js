@@ -75,26 +75,45 @@ import {
   appendPreviewRow,
 } from "./monteCarloPreviewRows.js";
 
+import {
+  DEFAULT_MONTE_CARLO,
+} from "./monteCarloConstants.js";
+
+/**
+ * Re-export range construction for compatibility with other modules.
+ *
+ * Purpose:
+ *   Allows existing imports to access buildRangesFromBlock through the Monte
+ *   Carlo engine module without changing their import path.
+ */
 export const buildMonteCarloRangesFromBlock =
   buildRangesFromBlock;
 
-const DEFAULT_MONTE_CARLO = {
-  n: 50000,
-  histogramBins: 100,
-  unit: "relative",
-  mode: "A_W",
-  ARange: [0.05, 0.8],
-  WRange: [0.02, 0.3],
-  IDRange: [1, 7],
-};
 
-/*
-* -------------------------------------------------------------------------- 
-* Chart helpers                                                              
-* -------------------------------------------------------------------------- 
-*/
+/* -------------------------------------------------------------------------- */
+/* Chart helpers                                                              */
+/* -------------------------------------------------------------------------- */
 
-
+/**
+ * Compute chart bounds that include both planned W values and clamp limits.
+ *
+ * Args:
+ *   plannedW: Array of planned target widths in CSS pixels.
+ *   minTargetPx: Minimum allowed target size in CSS pixels.
+ *   maxTargetPx: Maximum allowed target size in CSS pixels.
+ *
+ * Returns:
+ *   Object containing:
+ *   - chartMin: lower histogram/CDF chart bound
+ *   - chartMax: upper histogram/CDF chart bound
+ *
+ * Side effects:
+ *   None.
+ *
+ * Purpose:
+ *   Ensures that the plotted distribution includes the requested W range and
+ *   the active application clamp bounds.
+ */
 function computeChartBounds({
   plannedW,
   minTargetPx,
@@ -123,7 +142,6 @@ function computeChartBounds({
   };
 }
 
-
 /* -------------------------------------------------------------------------- */
 /* Single parameter-space simulation                                          */
 /* -------------------------------------------------------------------------- */
@@ -131,7 +149,43 @@ function computeChartBounds({
 /**
  * Run a Monte Carlo analysis for one parameter space.
  *
- * This is the lowest-level public simulation function.
+ * Args:
+ *   n: Number of simulated samples.
+ *   mode: Parameter mode, for example "A_W", "ID_W" or "ID_A".
+ *   unit: Input unit, for example "relative", "px" or "mm".
+ *   ARange: Amplitude range in the selected unit.
+ *   WRange: Width range in the selected unit.
+ *   IDRange: Index-of-difficulty range.
+ *   requiredOverlap: Required target overlap ratio used for preview rows.
+ *   histogramBins: Number of histogram bins.
+ *   aSampling: Sampling distribution for A.
+ *   wSampling: Sampling distribution for W.
+ *   idSampling: Sampling distribution for ID.
+ *   overrideViewport: Optional viewport object for simulation/testing.
+ *   state: Shared application state containing calibration and touchability.
+ *
+ * Returns:
+ *   Complete Monte Carlo result object containing:
+ *   - meta
+ *   - counts
+ *   - summary
+ *   - distributions
+ *   - rows
+ *
+ * Side effects:
+ *   None. This function computes and returns simulation results only.
+ *
+ * Workflow:
+ *   1. Resolve viewport and active target-size constraints.
+ *   2. Generate planned W samples.
+ *   3. Clamp planned W values to application constraints.
+ *   4. Count clamp events.
+ *   5. Build preview rows.
+ *   6. Compute summary statistics, histograms and CDFs.
+ *
+ * Important:
+ *   This function analyzes W distortion caused by target-size constraints.
+ *   It does not place targets on screen and does not execute real trials.
  */
 export function runMonteCarloW({
   n = DEFAULT_MONTE_CARLO.n,
@@ -171,6 +225,8 @@ export function runMonteCarloW({
   const counts = createSimulationCounts();
 
   for (let i = 0; i < n; i++) {
+    // Generate one planned sample according to the selected parameter mode and
+    // sampling distributions.
     const sample = samplePlannedW({
       mode,
       unit,
@@ -188,11 +244,14 @@ export function runMonteCarloW({
       idSampling,
     });
 
+    // Invalid samples are counted separately and excluded from W distribution
+    // arrays because they cannot be clamped or plotted meaningfully.
     if (!Number.isFinite(sample.WpxRaw)) {
       updateInvalidCount(counts);
       continue;
     }
 
+    // Analyze how the planned W value is changed by active app constraints.
     const clampInfo =
       analyzeTargetSizeClamp(
         sample.WpxRaw,
@@ -275,21 +334,25 @@ export function runMonteCarloW({
     counts: finalCounts,
 
     summary: {
+      // Statistical summary of the requested/planned W distribution.
       planned_w_px:
         summarize(plannedW),
 
+      // Statistical summary of the effective W distribution after clamping.
       effective_w_px:
         summarize(effectiveW),
 
+      // Mass accumulated on the lower and upper constraint boundaries.
       edge_mass: {
         min_px: minTargetPx,
         max_px: maxTargetPx,
 
         min_mass_pct: finalCounts.clamped_min_pct,
-        
+
         max_mass_pct: finalCounts.clamped_max_pct,
       },
 
+      // Qualitative distortion label derived from total clamp percentage.
       diagnostic:
         getDistortionLevel(distortionPct),
     },
@@ -336,6 +399,24 @@ export function runMonteCarloW({
 
 /**
  * Run a Monte Carlo analysis for one protocol block.
+ *
+ * Args:
+ *   block: Session block configuration from the protocol editor.
+ *   protocol: Parent protocol object containing unit and sampling settings.
+ *   state: Shared application state containing calibration and touchability.
+ *   n: Number of simulated samples.
+ *   histogramBins: Number of histogram bins.
+ *   overrideViewport: Optional viewport object for simulation/testing.
+ *
+ * Returns:
+ *   Monte Carlo result object for the block.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Behavior:
+ *   Converts the block's entered A/W/ID values into numeric ranges, then
+ *   delegates the actual simulation to runMonteCarloW().
  */
 export function runMonteCarloBlock({
   block,
@@ -386,6 +467,30 @@ export function runMonteCarloBlock({
 
 /**
  * Run a Monte Carlo analysis for all blocks in one protocol.
+ *
+ * Args:
+ *   protocol: Protocol object containing sessionBlocks and sampling settings.
+ *   state: Shared application state containing calibration and touchability.
+ *   n: Number of simulated samples per block.
+ *   histogramBins: Number of histogram bins per block.
+ *   overrideViewport: Optional viewport object for simulation/testing.
+ *
+ * Returns:
+ *   Protocol-level Monte Carlo result containing:
+ *   - meta: protocol-wide diagnostics and warning counts
+ *   - blocks: block-level simulation results
+ *
+ * Side effects:
+ *   None.
+ *
+ * Workflow:
+ *   1. Read all session blocks from the protocol.
+ *   2. Run one block-level simulation for each block.
+ *   3. Aggregate block results into protocol diagnostics.
+ *
+ * Important:
+ *   n is applied per block. For example, 5 blocks with n=1000 produce 5000
+ *   simulated block samples in total.
  */
 export function runMonteCarloProtocol({
   protocol,

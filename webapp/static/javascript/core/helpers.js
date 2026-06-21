@@ -40,6 +40,9 @@
  * - To change fullscreen/wake-lock behavior: edit fullscreen.js.
  */
 
+// Re-export low-level helper functions from specialized utility modules.
+// This keeps older imports stable while implementation details stay modular.
+
 export {
   computeID,
   computeWFromID,
@@ -84,4 +87,20 @@ export {
   setWakeLock,
 } from "./utils/fullscreen.js";
 
+/**
+ * Return a DOM element by ID.
+ *
+ * Args:
+ *   id: Element ID without the leading "#".
+ *
+ * Returns:
+ *   HTMLElement | null: Matching DOM element, or null if the element does not
+ *   exist in the current document.
+ *
+ * Side effects:
+ *   None. This helper only reads from the DOM.
+ *
+ * Related usage:
+ *   Used mainly by core/dom.js to build the centralized DOM registry.
+ */
 export const $ = (id) => document.getElementById(id);

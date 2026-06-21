@@ -45,9 +45,22 @@ from .helpers import (
 @bp.get("/check_ids")
 def check_ids():
     """
-    Check whether participant/session IDs already exist.
+    Check whether a participant ID or participant/session pair already exists
 
-    Used by the frontend before starting or saving a run.
+    Query parameters:
+        participant_id: Raw participant identifier entered in the frontend
+        session_id: Raw session identifier entered in the frontend
+
+    Returns:
+        flask.Response: JSON response containing the sanitized identifiers and
+        boolean flags for participant_exists and session_exists
+
+    Side effects:
+        None. This endpoint only reads from the participant and session tables
+
+    Related usage:
+        Used by the frontend before starting or saving a run to warn about
+        duplicate participant/session combinations
     """
     participant_id = safe_name(
         request.args.get("participant_id"),
@@ -93,15 +106,36 @@ def check_ids():
 @bp.post("/save_results")
 def save_results():
     """
-    Persist one completed experiment run.
+    Persist one completed experiment run
+
+    Expected JSON payload:
+        rows (list[dict]): Interaction-level and/or trial-summary result rows
+        meta (dict): Session metadata, protocol snapshot, device context,
+            calibration values and Monte Carlo pre-check information
 
     Stored database levels:
-    - participant
-    - session
-    - trial rows
+        - participant: Created if the participant ID does not exist yet
+        - session: Stores one experiment run and its protocol snapshot
+        - trial: Stores all received result rows for the session
 
-    The session table receives a protocol snapshot.
-    Trial rows receive interaction and summary data.
+    Returns:
+        flask.Response:
+            - 200 with ok=True and session_row_id when saving succeeds
+            - 400 if the result rows are missing or malformed
+            - 409 if the participant/session pair already exists
+            - 500 if the session row could not be created
+
+    Side effects:
+        Inserts one participant if needed, inserts one session row, inserts all
+        trial rows and commits the transaction
+
+    Concurrency:
+        Uses DB_WRITE_LOCK to serialize write access and reduce SQLite write
+        conflicts during overlapping save requests
+
+    Reproducibility:
+        The session row stores a protocol snapshot so later changes to protocol
+        templates do not affect already saved experiment sessions
     """
     payload = request.get_json(silent=True) or {}
 
@@ -171,6 +205,9 @@ def save_results():
                     500,
                 )
             
+            # Store all frontend result rows under the newly created session.
+            # Each row may represent either one interaction or one trial summary,
+            # depending on the trial_summary flag.
             for row in rows:
                 trial_data = build_trial_data(
                     row=row,
@@ -200,7 +237,21 @@ def save_results():
 @bp.get("/sessions/<participant_id>")
 def list_sessions(participant_id: str):
     """
-    Return a lightweight JSON list of sessions for one participant.
+    Return a lightweight JSON list of saved sessions for one participant
+
+    Args:
+        participant_id (str): Participant identifier from the URL path
+
+    Returns:
+        flask.Response: JSON response containing the sanitized participant ID
+        and a list of session metadata rows ordered by started_at descending
+
+    Side effects:
+        None. This endpoint only reads from the session table
+
+    Related usage:
+        Can be used by frontend views or dashboards to inspect existing sessions
+        without loading all trial-level result data
     """
     safe_participant_id = safe_name(participant_id, "P")
 
@@ -247,11 +298,21 @@ def list_sessions(participant_id: str):
 
 def validate_result_payload(rows):
     """
-    Validate the incoming result payload.
+    Validate the result row list received from the frontend
+
+    Args:
+        rows: Raw rows value from the JSON request payload
 
     Returns:
-    - None when valid
-    - Flask response tuple when invalid
+        None: The payload is valid
+        tuple: Flask JSON error response and HTTP status code when invalid
+
+    Validation rules:
+        - rows must be a non-empty list
+        - every item in rows must be a dictionary
+
+    Side effects:
+        None
     """
     if not isinstance(rows, list) or not rows:
         return (
@@ -280,7 +341,22 @@ def validate_result_payload(rows):
 
 def session_exists(cur, participant_id: str, session_code: str) -> bool:
     """
-    Return True if the participant/session pair already exists.
+    Check whether a participant/session pair already exists
+
+    Args:
+        cur: SQLite cursor used for the SELECT query
+        participant_id (str): Sanitized participant identifier
+        session_code (str): Sanitized session identifier
+
+    Returns:
+        bool: True if a matching session row exists, otherwise False
+
+    Side effects:
+        Executes a SELECT query using the provided cursor
+
+    Related usage:
+        Used by save_results() to prevent accidental overwriting of existing
+        experiment sessions
     """
     cur.execute(
         """
@@ -303,7 +379,25 @@ def build_session_data(
     started_at: str,
 ) -> dict:
     """
-    Build the session table row from frontend metadata.
+    Build the session table row from frontend metadata
+
+    Args:
+        meta (dict): Metadata object received from the frontend. It may contain
+            protocol information, Monte Carlo summaries, calibration values,
+            viewport values and device context data
+        participant_id (str): Sanitized participant identifier
+        session_code (str): Sanitized session identifier
+        started_at (str): UTC ISO timestamp assigned when the run is saved
+
+    Returns:
+        dict: Column-value mapping compatible with the session table
+
+    Side effects:
+        None. This function only maps frontend metadata to database columns
+
+    Important:
+        This mapping stores the protocol snapshot and technical context of the
+        run. This is required for reproducibility of saved experiment sessions
     """
     return {
         "participant_id": participant_id,
@@ -349,13 +443,37 @@ def build_session_data(
     }
 
 
+# This function intentionally keeps the frontend-to-database field mapping in
+# one place. This makes it easier to compare the frontend result schema with the
+# SQLite trial table and the CSV export query.
 def build_trial_data(
     *,
     row: dict,
     session_db_id: int,
 ) -> dict:
     """
-    Build one trial table row from one frontend result row.
+    Build one trial table row from one frontend result row
+
+    Args:
+        row (dict): One result row received from the frontend. It may represent
+            an interaction-level row or a trial-summary row
+        session_db_id (int): Database primary key of the parent session row
+
+    Returns:
+        dict: Column-value mapping compatible with the trial table
+
+    Side effects:
+        None. This function only maps frontend result fields to database columns
+
+    Field groups:
+        The mapping includes trial identifiers, target geometry, planned Fitts
+        parameters, effective Fitts parameters, touch coordinates, timing/error
+        values and device metadata
+
+    Related modules:
+        The resulting dictionary is inserted by save_results() using insert_dict()
+        The same columns are later used by CSV exports, dashboards and the
+        fitts_data analysis package
     """
     return {
         "session_id": session_db_id,

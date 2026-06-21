@@ -31,11 +31,29 @@ from .connection import db
 
 def init_db() -> None:
     """
-    Create the current database schema.
+    Create the current SQLite database schema if the tables do not exist yet
+
+    The tables are created in dependency order:
+        1. participant
+        2. protocol
+        3. session
+        4. trial
+
+    Returns:
+        None
+
+    Side effects:
+        Opens a database connection, creates missing tables and commits the
+        schema initialization
 
     Important:
-    This does not modify existing tables. For an old fitts.db, delete it or
-    migrate it manually before using this schema.
+        CREATE TABLE IF NOT EXISTS does not modify existing table structures
+        If an older fitts.db already exists, schema changes require deleting
+        the database file or applying a manual migration
+
+    Related modules:
+        Called during application startup in app.__init__.create_app()
+        Uses app.database.connection.db() to open the SQLite connection
     """
     with db() as conn:
         cur = conn.cursor()
@@ -50,17 +68,43 @@ def init_db() -> None:
 
 def ensure_columns() -> None:
     """
-    Kept for compatibility with app startup.
+    Compatibility placeholder for older startup code
 
-    No automatic ALTER TABLE migration is performed here by design.
-    Use a fresh database or run a manual migration when the schema changes.
+    Returns:
+        None
+
+    Side effects:
+        None. No ALTER TABLE statements are executed
+
+    Design decision:
+        Automatic schema migrations are intentionally not performed here
+        During development, schema changes must be handled by deleting the old
+        fitts.db file or by running an explicit manual migration
+
+    Related modules:
+        Called during application startup in app.__init__.create_app() after
+        init_db()
     """
+
     return None
 
 
 def create_participant_table(cur) -> None:
     """
-    Create the participant table.
+    Create the participant table
+
+    Args:
+        cur: SQLite cursor used to execute the CREATE TABLE statement
+
+    Returns:
+        None.
+
+    Responsibility:
+        Stores unique participant identifiers. Other tables reference this
+        table to associate sessions with participants
+
+    Side effects:
+        Creates the participant table if it does not already exist
     """
     cur.execute(
         """
@@ -73,7 +117,25 @@ def create_participant_table(cur) -> None:
 
 def create_protocol_table(cur) -> None:
     """
-    Create the reusable protocol template table.
+    Create the reusable protocol template table
+
+    Args:
+        cur: SQLite cursor used to execute the CREATE TABLE statement
+
+    Returns:
+        None
+
+    Responsibility:
+        Stores reusable experiment protocol definitions, including the protocol
+        JSON, sampling modes, optional admin settings and precomputed
+        Monte Carlo summary values
+
+    Notes:
+        Protocols are templates. A session stores its own protocol snapshot so
+        later edits of a protocol do not change already recorded sessions
+
+    Side effects:
+        Creates the protocol table if it does not already exist
     """
     cur.execute(
         """
@@ -104,11 +166,34 @@ def create_protocol_table(cur) -> None:
 
 def create_session_table(cur) -> None:
     """
-    Create the experiment session table.
+    Create the experiment session table
 
-    Each session stores a protocol snapshot so the experiment remains
-    reproducible even if the protocol template is edited later.
+    Args:
+        cur: SQLite cursor used to execute the CREATE TABLE statement.
+
+    Returns:
+        None
+
+    Responsibility:
+        Stores one executed or prepared experiment session for one participant
+        Each session contains metadata about the participant, session code,
+        protocol snapshot, device context, calibration values and Monte Carlo
+        pre-check results
+
+    Reproducibility:
+        The session stores a protocol snapshot so the experiment remains
+        reproducible even if the reusable protocol template is edited later
+
+    Constraints:
+        The combination of participant_id and session_code must be unique
+
+    Side effects:
+        Creates the session table if it does not already exist
     """
+    # The session table stores a protocol snapshot and device context
+    # This keeps saved experiments reproducible even when protocol templates
+    # or frontend defaults are changed later
+
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS session (
@@ -166,8 +251,33 @@ def create_trial_table(cur) -> None:
     """
     Create the trial/result table.
 
-    This table stores both interaction-level and trial-summary rows.
+    Args:
+        cur: SQLite cursor used to execute the CREATE TABLE statement
+
+    Returns:
+        None.
+
+    Responsibility:
+        Stores the recorded experiment data. The table contains both
+        interaction-level rows and trial-summary rows. It captures planned
+        parameters, effective parameters, target geometry, touch positions,
+        timing values, error information and device metadata
+
+    Row types:
+        - interaction-level rows store individual touch interactions
+        - trial-summary rows are marked by trial_summary=1 and summarize the
+          result of a full trial.
+
+    Related modules:
+        Result rows are inserted by backend result routes and are later used by
+        dashboards, CSV exports and the Python analysis package fitts_data
+
+    Side effects:
+        Creates the trial table if it does not already exist
     """
+    # The table intentionally contains many denormalized columns
+    # This makes later export and analysis easier because each recorded row
+    # already contains the relevant protocol, geometry, timing and device values
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS trial (

@@ -45,18 +45,50 @@ import {
   getFeasibleWBoundsInUnit,
 } from "./experimentConstraints.js";
 
+// Fitts' Law formula used for all resolved trial parameters.
+// Currently fixed to Shannon because this is the application's default model.
 const SHANNON_FORMULA = "shannon";
 
 /* -------------------------------------------------------------------------- */
-/* Unit conversion helpers                                                     */
+/* Unit conversion helpers                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Return the shortest side of the current viewport.
+ *
+ * Returns:
+ *   Shortest viewport side in CSS pixels.
+ *
+ * Side effects:
+ *   Reads the current viewport size through getViewportSize().
+ *
+ * Purpose:
+ *   Used when converting pixel values back to relative input units.
+ */
 function getViewportMinSide() {
   return getViewportSize().minSide;
 }
 
 /**
- * Convert planned amplitude from px to mm when calibration is available.
+ * Convert planned amplitude from pixels to millimeters when possible.
+ *
+ * Args:
+ *   Apx: Planned amplitude in CSS pixels.
+ *   A_in: Original sampled amplitude in the selected input unit.
+ *   unit: Current unit mode, for example "relative", "px" or "mm".
+ *   state: Shared application state containing optional mmPerPx calibration.
+ *
+ * Returns:
+ *   Planned amplitude in millimeters, or null if no millimeter value can be
+ *   derived.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Behavior:
+ *   - If calibration exists, pixels are converted to millimeters.
+ *   - If the original input unit is already millimeters, A_in is returned.
+ *   - Otherwise, null is returned.
  */
 function getAmmFromApx(Apx, A_in, unit, state) {
   if (state?.mmPerPx) return Apx * state.mmPerPx;
@@ -65,7 +97,25 @@ function getAmmFromApx(Apx, A_in, unit, state) {
 }
 
 /**
- * Convert planned target width from px to mm when calibration is available.
+ * Convert planned target width from pixels to millimeters when possible.
+ *
+ * Args:
+ *   Wpx: Planned target width in CSS pixels.
+ *   W_in: Original sampled width in the selected input unit.
+ *   unit: Current unit mode, for example "relative", "px" or "mm".
+ *   state: Shared application state containing optional mmPerPx calibration.
+ *
+ * Returns:
+ *   Planned target width in millimeters, or null if no millimeter value can be
+ *   derived.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Behavior:
+ *   - If calibration exists, pixels are converted to millimeters.
+ *   - If the original input unit is already millimeters, W_in is returned.
+ *   - Otherwise, null is returned.
  */
 function getWmmFromWpx(Wpx, W_in, unit, state) {
   if (state?.mmPerPx) return Wpx * state.mmPerPx;
@@ -74,7 +124,24 @@ function getWmmFromWpx(Wpx, W_in, unit, state) {
 }
 
 /**
- * Convert px back into the currently selected input unit.
+ * Convert a pixel value back into the currently selected input unit.
+ *
+ * Args:
+ *   px: Value in CSS pixels.
+ *   unit: Current unit mode, for example "relative", "px" or "mm".
+ *   state: Shared application state containing optional mmPerPx calibration.
+ *
+ * Returns:
+ *   Converted value in the selected input unit, or null if conversion is not
+ *   possible.
+ *
+ * Side effects:
+ *   Reads the viewport size when converting to relative units.
+ *
+ * Behavior:
+ *   - "px": returns the pixel value directly.
+ *   - "mm": requires calibration and returns px * mmPerPx.
+ *   - any other mode is treated as relative and returns px / minSide.
  */
 function pxToInputUnit(px, unit, state) {
   if (!Number.isFinite(px)) return null;
@@ -93,9 +160,26 @@ function pxToInputUnit(px, unit, state) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Sampling helpers                                                            */
+/* Sampling helpers                                                           */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Sample or parse the planned amplitude value A from a trial definition.
+ *
+ * Args:
+ *   t: Trial definition object.
+ *
+ * Returns:
+ *   Numeric amplitude value in the trial's selected input unit.
+ *
+ * Side effects:
+ *   May use stochastic sampling through sampleParameter().
+ *
+ * Related fields:
+ *   - t.dist_entered
+ *   - t.random_A
+ *   - t.a_sampling
+ */
 function sampleA(t) {
   return sampleParameter({
     input: t.dist_entered,
@@ -104,6 +188,28 @@ function sampleA(t) {
   });
 }
 
+/**
+ * Sample or parse the planned target width W from a trial definition.
+ *
+ * Args:
+ *   t: Trial definition object.
+ *   feasibleW: Feasible width bounds in the current input unit.
+ *
+ * Returns:
+ *   Numeric width value in the trial's selected input unit.
+ *
+ * Side effects:
+ *   May use stochastic sampling through sampleParameter().
+ *
+ * Behavior:
+ *   Feasible width bounds are passed as overrides so random width sampling does
+ *   not intentionally generate values outside active target-size constraints.
+ *
+ * Related fields:
+ *   - t.width_entered
+ *   - t.random_W
+ *   - t.w_sampling
+ */
 function sampleW(t, feasibleW) {
   return sampleParameter({
     input: t.width_entered,
@@ -114,6 +220,23 @@ function sampleW(t, feasibleW) {
   });
 }
 
+/**
+ * Sample or parse the planned index of difficulty ID from a trial definition.
+ *
+ * Args:
+ *   t: Trial definition object.
+ *
+ * Returns:
+ *   Numeric ID value.
+ *
+ * Side effects:
+ *   May use stochastic sampling through sampleParameter().
+ *
+ * Related fields:
+ *   - t.id_entered
+ *   - t.random_ID
+ *   - t.id_sampling
+ */
 function sampleID(t) {
   return sampleParameter({
     input: t.id_entered,
@@ -123,17 +246,32 @@ function sampleID(t) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Constraint helper                                                           */
+/* Constraint helper                                                          */
 /* -------------------------------------------------------------------------- */
 
 /**
  * Ensure W respects the active target-size constraints.
  *
- * This prevents impossible 100% overlap validation for very small targets.
+ * Args:
+ *   Wpx: Planned target width in CSS pixels.
+ *   W_in: Planned target width in the selected input unit.
+ *   unit: Current unit mode.
+ *   state: Shared application state containing calibration and admin settings.
+ *
+ * Returns:
+ *   Object with adjusted Wpx and W_in values.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Behavior:
+ *   Wpx is clamped through clampTargetSizePx(). If the pixel value changes,
+ *   W_in is recomputed so the input-unit representation stays consistent with
+ *   the constrained pixel value.
  *
  * Important:
- * If W is increased or decreased by constraints, the effective planned ID may
- * differ from the originally requested ID.
+ *   If W is increased or decreased by constraints, the effective planned ID may
+ *   differ from the originally requested ID.
  */
 function enforceTargetSizeConstraints(Wpx, W_in, unit, state) {
   if (!Number.isFinite(Wpx)) {
@@ -154,9 +292,29 @@ function enforceTargetSizeConstraints(Wpx, W_in, unit, state) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Mode resolvers                                                              */
+/* Mode resolvers                                                             */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Resolve trial parameters for A_W mode.
+ *
+ * Args:
+ *   t: Trial definition object.
+ *   state: Shared application state.
+ *   unit: Current unit mode.
+ *   feasibleW: Feasible width bounds in the current input unit.
+ *
+ * Returns:
+ *   Object containing A_in, W_in, ID_in, Apx and Wpx.
+ *
+ * Side effects:
+ *   May use stochastic sampling through sampleA() and sampleW().
+ *
+ * Behavior:
+ *   A and W are sampled directly from user-entered values. ID is not taken from
+ *   input in this mode and is therefore returned as null. W is constrained after
+ *   conversion to pixels.
+ */
 function resolveModeAW(t, state, unit, feasibleW) {
   let A_in = sampleA(t);
   let W_in = sampleW(t, feasibleW);
@@ -170,6 +328,8 @@ function resolveModeAW(t, state, unit, feasibleW) {
   let Apx = Aconv.px;
   let Wpx = Wconv.px;
 
+  // Ensure that the planned target width remains compatible with the active
+  // touchability and viewport constraints.
   ({ Wpx, W_in } =
     enforceTargetSizeConstraints(Wpx, W_in, unit, state));
 
@@ -182,6 +342,29 @@ function resolveModeAW(t, state, unit, feasibleW) {
   };
 }
 
+/**
+ * Resolve trial parameters for ID_A mode.
+ *
+ * Args:
+ *   t: Trial definition object.
+ *   state: Shared application state.
+ *   unit: Current unit mode.
+ *   formula: Fitts' Law formula identifier.
+ *
+ * Returns:
+ *   Object containing A_in, W_in, ID_in, Apx and Wpx.
+ *
+ * Side effects:
+ *   May use stochastic sampling through sampleID() and sampleA().
+ *
+ * Behavior:
+ *   ID and A are sampled directly. W is computed from A and ID using the active
+ *   Fitts' Law formula. W is then clamped to target-size constraints.
+ *
+ * Notes:
+ *   When unit is "mm", the equation is solved in millimeters first and then
+ *   converted to pixels if calibration is available.
+ */
 function resolveModeIDA(t, state, unit, formula) {
   const ID_in = sampleID(t);
   const A_in = sampleA(t);
@@ -201,6 +384,7 @@ function resolveModeIDA(t, state, unit, formula) {
     W_in = pxToInputUnit(Wpx, unit, state);
   }
 
+  // Constraints may modify W, which can change the effective planned ID.
   ({ Wpx, W_in } =
     enforceTargetSizeConstraints(Wpx, W_in, unit, state));
 
@@ -213,6 +397,30 @@ function resolveModeIDA(t, state, unit, formula) {
   };
 }
 
+/**
+ * Resolve trial parameters for ID_W mode.
+ *
+ * Args:
+ *   t: Trial definition object.
+ *   state: Shared application state.
+ *   unit: Current unit mode.
+ *   formula: Fitts' Law formula identifier.
+ *   feasibleW: Feasible width bounds in the current input unit.
+ *
+ * Returns:
+ *   Object containing A_in, W_in, ID_in, Apx and Wpx.
+ *
+ * Side effects:
+ *   May use stochastic sampling through sampleID() and sampleW().
+ *
+ * Behavior:
+ *   ID and W are sampled directly. W is constrained first, then A is computed
+ *   from W and ID using the active Fitts' Law formula.
+ *
+ * Notes:
+ *   When unit is "mm", the equation is solved in millimeters first and then
+ *   converted to pixels if calibration is available.
+ */
 function resolveModeIDW(t, state, unit, formula, feasibleW) {
   const ID_in = sampleID(t);
   let W_in = sampleW(t, feasibleW);
@@ -222,6 +430,7 @@ function resolveModeIDW(t, state, unit, formula, feasibleW) {
 
   let Wpx = Wconv.px;
 
+  // W must respect target-size constraints before A is computed.
   ({ Wpx, W_in } =
     enforceTargetSizeConstraints(Wpx, W_in, unit, state));
 
@@ -246,9 +455,35 @@ function resolveModeIDW(t, state, unit, formula, feasibleW) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Planned values                                                              */
+/* Planned values                                                             */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Compute planned millimeter values and planned index of difficulty.
+ *
+ * Args:
+ *   Apx: Resolved amplitude in CSS pixels.
+ *   Wpx: Resolved target width in CSS pixels.
+ *   A_in: Resolved amplitude in the selected input unit.
+ *   W_in: Resolved target width in the selected input unit.
+ *   unit: Current unit mode.
+ *   state: Shared application state containing optional calibration.
+ *   formula: Fitts' Law formula identifier.
+ *
+ * Returns:
+ *   Object containing:
+ *   - A_mm_planned: planned amplitude in millimeters or null
+ *   - W_mm_planned: planned width in millimeters or null
+ *   - ID_planned: planned index of difficulty or null
+ *
+ * Side effects:
+ *   None.
+ *
+ * Behavior:
+ *   ID_planned is computed only when both A and W can be represented in
+ *   millimeters. Without calibration in non-mm unit modes, millimeter values
+ *   and ID_planned may be null.
+ */
 function computePlannedValues({
   Apx,
   Wpx,
@@ -283,12 +518,41 @@ function computePlannedValues({
 
 /**
  * Resolve one trial definition into concrete A, W and ID values.
+ *
+ * Args:
+ *   t: Trial definition object created by the session/protocol generator.
+ *   state: Shared application state containing calibration, touchability and
+ *     constraint settings.
+ *
+ * Returns:
+ *   Object containing:
+ *   - formula: Fitts' Law formula identifier
+ *   - paramMode: resolved parameter mode
+ *   - A_in, W_in, ID_in: sampled/input-unit values
+ *   - Apx, Wpx: resolved pixel values used by runtime placement
+ *   - A_mm_planned, W_mm_planned: planned physical values when available
+ *   - ID_planned: planned index of difficulty when available
+ *
+ * Side effects:
+ *   May use stochastic sampling through parameterSampling.js.
+ *
+ * Behavior:
+ *   Selects the appropriate resolver based on t.param_mode:
+ *   - "A_W": sample A and W directly
+ *   - "ID_A": sample ID and A, compute W
+ *   - "ID_W": sample ID and W, compute A
+ *
+ * Important:
+ *   This function resolves planned parameters only. Later modules may still
+ *   adjust placement or effective target geometry during runtime.
  */
 export function resolveTrialParameters(t, state) {
   const paramMode = t.param_mode ?? "A_W";
   const unit = t.unit;
   const formula = SHANNON_FORMULA;
 
+  // Compute feasible W bounds once so W sampling can respect the active
+  // target-size constraints.
   const feasibleW =
     getFeasibleWBoundsInUnit(unit, state);
 

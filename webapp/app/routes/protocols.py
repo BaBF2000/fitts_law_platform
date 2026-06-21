@@ -49,9 +49,19 @@ from .helpers import insert_dict
 @bp.get("/api/protocols")
 def api_list_protocols():
     """
-    Return all saved protocol templates from the database.
+    Return all saved protocol templates from the database
 
-    The newest updated protocol is returned first.
+    Returns:
+        flask.Response: JSON response with:
+            - ok: True
+            - protocols: list of protocol template rows
+
+    Database access:
+        Reads from the protocol table and returns the newest updated protocol
+        first
+
+    Side effects:
+        None. This endpoint only reads protocol metadata and protocol JSON
     """
     with db() as conn:
         cur = conn.cursor()
@@ -94,14 +104,36 @@ def api_list_protocols():
 @bp.post("/api/protocols")
 def api_save_protocol():
     """
-    Save or update one protocol template.
+    Save or update one reusable protocol template
+
+    Expected JSON payload:
+        protocol_json (required): Serialized protocol definition
+        protocol_name (optional): Human-readable protocol name. If missing,
+            a default name is used
+        protocol_comment (optional): Comment entered by the user
+        a_sampling, w_sampling, id_sampling (optional): Sampling mode metadata
+        admin_settings_json (optional): Serialized admin/default constraint data
+        monte_carlo_* (optional): Precomputed Monte Carlo summary values
+
+    Returns:
+        flask.Response: JSON response with:
+            - ok: True and protocol_id on success
+            - ok: False and an error message if protocol_json is missing
 
     Behavior:
-    - If a protocol with the same protocol_name exists, update it.
-    - Otherwise, create a new protocol row.
+        If a protocol with the same protocol_name already exists, it is updated
+        Otherwise, a new protocol row is inserted
 
-    Required payload field:
-    - protocol_json
+    Side effects:
+        Inserts or updates one row in the protocol table and commits the change
+
+    Concurrency:
+        Uses DB_WRITE_LOCK to serialize write access and reduce SQLite write
+        conflicts during overlapping requests
+
+    Important:
+        A protocol is a reusable template. It is not the immutable session
+        snapshot stored when an experiment is executed
     """
     payload = request.get_json(silent=True) or {}
 
@@ -127,12 +159,15 @@ def api_save_protocol():
             protocol_name=protocol_name,
             protocol_json=protocol_json,
             now=now,
-        )
+    )
 
     with DB_WRITE_LOCK:
         with db() as conn:
             cur = conn.cursor()
-
+            
+            # Use the protocol name as the logical key for upsert-like behavior.
+            
+            # The database also enforces protocol_name as UNIQUE.
             existing = find_protocol_by_name(
                 cur,
                 protocol_name,
@@ -170,7 +205,24 @@ def api_save_protocol():
 @bp.delete("/api/protocols/<int:protocol_id>")
 def api_delete_protocol(protocol_id: int):
     """
-    Delete one protocol template by database id.
+    Delete one protocol template by database id
+
+    Args:
+        protocol_id (int): Primary key of the protocol row to delete
+
+    Returns:
+        flask.Response: JSON response with ok=True
+
+    Side effects:
+        Deletes the matching protocol row from the protocol table and commits
+        the change. If the id does not exist, no row is deleted
+
+    Concurrency:
+        Uses DB_WRITE_LOCK to serialize write access
+
+    Important:
+        Deleting a protocol template does not delete already saved experiment
+        sessions, because sessions store their own protocol snapshots
     """
     with DB_WRITE_LOCK:
         with db() as conn:
@@ -198,7 +250,23 @@ def build_protocol_data(
     now: str,
 ) -> dict:
     """
-    Build the insert dictionary for the protocol table.
+    Build the dictionary used to insert a protocol row
+
+    Args:
+        payload (dict): JSON payload received from the frontend
+        protocol_name (str): Final protocol name used for the database row
+        protocol_json (str): Serialized protocol definition
+        now (str): UTC ISO timestamp used for created_at and updated_at
+
+    Returns:
+        dict: Column-value mapping compatible with the protocol table
+
+    Side effects:
+        None. This function only transforms request data into a database-ready
+        dictionary
+
+    Related usage:
+        The returned dictionary is passed to insert_dict() in api_save_protocol()
     """
     return {
         "protocol_name": protocol_name,
@@ -230,7 +298,22 @@ def build_protocol_data(
 
 def find_protocol_by_name(cur, protocol_name: str):
     """
-    Return an existing protocol row with the same name, if present.
+    Find an existing protocol template by its unique protocol name
+
+    Args:
+        cur: SQLite cursor used for the SELECT query
+        protocol_name (str): Protocol name to look up
+
+    Returns:
+        sqlite3.Row | None: Existing protocol row containing id and created_at,
+        or None if no matching protocol exists
+
+    Side effects:
+        Executes a SELECT query using the provided cursor
+
+    Notes:
+        The protocol_name column is unique in the database schema. This helper
+        supports the update-or-insert behavior in api_save_protocol()
     """
     cur.execute(
         """
@@ -254,7 +337,24 @@ def update_existing_protocol(
     now: str,
 ) -> None:
     """
-    Update an existing protocol template.
+    Update an existing reusable protocol template
+
+    Args:
+        cur: SQLite cursor used for the UPDATE statement
+        protocol_id (int): Primary key of the protocol row to update
+        payload (dict): JSON payload received from the frontend
+        protocol_json (str): Serialized protocol definition
+        now (str): UTC ISO timestamp written to updated_at
+
+    Returns:
+        None.
+
+    Side effects:
+        Executes an UPDATE statement on the protocol table
+
+    Important:
+        The created_at timestamp is intentionally preserved. Only updated_at
+        and the editable protocol fields are changed
     """
     cur.execute(
         """

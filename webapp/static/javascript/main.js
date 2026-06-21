@@ -66,33 +66,68 @@ import { loadCalibration, isCalibrationLikelyValid } from "./core/storage.js";
 
 /**
  * Application entry point.
+ *
+ * Initializes the application after the DOM is available. The function collects
+ * DOM references, initializes feature modules, wires UI handlers, restores
+ * persisted device-specific state and finally shows the start screen.
+ *
+ * Returns:
+ *   void
+ *
+ * Side effects:
+ *   - Reads DOM references.
+ *   - Initializes feature modules.
+ *   - Registers event listeners.
+ *   - Restores calibration and touchability state.
+ *   - Updates UI state and HUD values.
+ *
+ * Notes:
+ *   If essential DOM elements are not available yet, boot() schedules itself
+ *   again with requestAnimationFrame(). This prevents initialization errors
+ *   when the script runs before the UI is fully ready.
  */
 function boot() {
   const dom = getDom();
 
+  // Wait until the essential application elements are available.
+  // This makes boot() robust against early script execution.
   if (!dom.app || !dom.buttonStart) {
     requestAnimationFrame(boot);
     return;
   }
 
+  // Initialize feature modules and keep their public APIs for handler wiring.
   const modules = initModules(dom);
 
+  // Initialize optional/admin-related UI first so its values are available
+  // before protocol design or Monte Carlo handlers are used.
   initAdminSettingsUI(dom, ui);
+
+  // Development/debug hooks.
   setupDebug(dom);
+
+  // Restore persisted device-specific state.
   restoreCalibration(dom);
   loadParticipantTouchability(dom, state);
+
+  // Keep viewport-dependent values synchronized.
   setupViewportUpdates(dom);
+
+  // Wire participant/session ID checks and reload touchability when needed.
   setupIdHints({
     dom,
     onParticipantChanged: () =>
       loadParticipantTouchability(dom, state),
   });
+
+  // Wire feature-specific UI handlers.
   setupCalibrationHandlers({
     dom,
     state,
     ui,
     cal: modules.cal,
   });
+
   setupTouchabilityHandlers({
     dom,
     state,
@@ -101,6 +136,7 @@ function boot() {
   });
 
   setupCommentToggle(dom);
+
   setupExperimentDesignHandlers({
     dom,
     state,
@@ -108,6 +144,7 @@ function boot() {
     server,
     sessionDesign: modules.sessionDesign,
   });
+
   setupRunHandlers({
     dom,
     state,
@@ -116,6 +153,7 @@ function boot() {
     sessionDesign: modules.sessionDesign,
     refreshIdHints,
   });
+
   setupExportHandlers({
     dom,
     state,
@@ -123,14 +161,34 @@ function boot() {
     exp: modules.exp,
   });
 
+  // Reset optional start-screen panels to a clean initial state.
   hideProtocolList(dom);
   hideExperimentDesignEditor(dom);
 
+  // Show the setup screen as the initial UI state.
   ui.show(dom, "start");
 }
 
 /**
- * Initialize feature modules.
+ * Initialize feature modules and return their public APIs.
+ *
+ * Args:
+ *   dom: DOM reference object returned by getDom().
+ *
+ * Returns:
+ *   Object containing initialized module APIs:
+ *   - cal: calibration module API
+ *   - exp: bound experiment runtime API
+ *   - sessionDesign: protocol/session block design API
+ *   - touchability: finger touchability measurement API
+ *
+ * Side effects:
+ *   Creates module instances and binds shared dependencies such as state, ui
+ *   and server helpers.
+ *
+ * Design rule:
+ *   This function wires modules together, but feature-specific behavior should
+ *   remain inside the corresponding module files.
  */
 function initModules(dom) {
   const cal = initCalibration(dom, state, ui);
@@ -147,7 +205,22 @@ function initModules(dom) {
 }
 
 /**
- * Enable debug UI only when ?debug=1 is present.
+ * Enable debug UI and global debug logging when ?debug=1 is present.
+ *
+ * Args:
+ *   dom: DOM reference object.
+ *
+ * Returns:
+ *   void
+ *
+ * Side effects:
+ *   - Shows or hides the debug button.
+ *   - Registers a click listener for toggling debug output.
+ *   - Registers global error and unhandled promise rejection listeners.
+ *
+ * Notes:
+ *   In normal experiment mode, the debug button is hidden to keep the UI clean
+ *   for participants and demonstrations.
  */
 function setupDebug(dom) {
   const params = new URLSearchParams(location.search);
@@ -177,6 +250,19 @@ function setupDebug(dom) {
 
 /**
  * Keep viewport-dependent HUD values up to date.
+ *
+ * Args:
+ *   dom: DOM reference object.
+ *
+ * Returns:
+ *   void
+ *
+ * Side effects:
+ *   Updates HUD size information immediately and registers a resize listener
+ *   that refreshes the displayed viewport/device dimensions.
+ *
+ * Related modules:
+ *   Uses core/ui.updateHudSize() and the shared application state.
  */
 function setupViewportUpdates(dom) {
   ui.updateHudSize(dom, state);
@@ -186,7 +272,22 @@ function setupViewportUpdates(dom) {
 }
 
 /**
- * Restore calibration if it still matches the current device signature.
+ * Restore persisted calibration if it still matches the current device context.
+ *
+ * Args:
+ *   dom: DOM reference object.
+ *
+ * Returns:
+ *   void
+ *
+ * Side effects:
+ *   If a valid calibration exists, updates state.mmPerPx, state.calErrorPct,
+ *   the HUD size display and the calibration status indicator.
+ *
+ * Validation:
+ *   The saved calibration is only reused when isCalibrationLikelyValid()
+ *   accepts it for the current device signature. This avoids applying an old
+ *   calibration to a different screen or viewport setup.
  */
 function restoreCalibration(dom) {
   const saved = loadCalibration();

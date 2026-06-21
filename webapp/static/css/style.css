@@ -1,10 +1,35 @@
 /* ==========================================================================
-   Fitts Display Lab — Stylesheet
+   Fitts Display Lab — Main Stylesheet
+
+   Organigram reference:
+   - Frontend Layer
+     → User Interface
+     → Visual Layout / Experiment Display
+
+   Responsibility:
+   Defines the complete visual appearance of the Fitts Display Lab web app:
+   - global theme variables
+   - setup panels and cards
+   - experiment HUD
+   - calibration UI
+   - touchability UI
+   - protocol/session design UI
+   - dynamic experiment targets
+   - Monte Carlo summary display
+
+   Important:
+   This stylesheet does not contain experiment logic.
+   It only controls layout, visibility, colors, spacing and interaction behavior.
    ========================================================================== */
+
 
 /* ==========================================================================
    1) Theme tokens
+
+   Centralized CSS custom properties used throughout the interface.
+   Keeping colors and layout constants here makes later visual changes easier.
    ========================================================================== */
+
 :root{
   --bg: #000;
   --panel: #1b1b1b;
@@ -29,21 +54,29 @@
   --targetInactiveOpacity: 0.35;
   --targetRadius: 12px;
 
+  /* Safe-area variables for devices with notches or system UI overlays. */
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
 
+  /* Dynamic viewport height used to avoid mobile browser toolbar issues. */
   --appH: 100dvh;
 }
 
+/* Fallback for browsers that do not support dynamic viewport units. */
 @supports not (height: 100dvh){
   :root{ --appH: 100vh; }
 }
 
+
 /* ==========================================================================
    2) Reset / base
+
+   Global reset for predictable layout behavior across browsers.
+   The app is fullscreen and should not scroll at the document level.
    ========================================================================== */
+
 *,
 *::before,
 *::after{
@@ -69,9 +102,14 @@ body{
   -webkit-overflow-scrolling: touch;
 }
 
+
 /* ==========================================================================
    3) Application root
+
+   Main fixed application container.
+   It owns the fullscreen experiment surface and all overlay panels.
    ========================================================================== */
+
 #application{
   position: fixed;
   inset: 0;
@@ -92,6 +130,7 @@ body{
   touch-action: auto;
 }
 
+/* Allow vertical scrolling inside setup/config panels only. */
 .setupPanel,
 .panel,
 #sessionConfigPanel,
@@ -100,14 +139,19 @@ body{
   touch-action: pan-y;
 }
 
+/* During the experiment, gestures must not scroll or zoom the page. */
 #application.running{
   touch-action: none;
   overscroll-behavior: none;
 }
 
+
 /* ==========================================================================
    4) Typography
+
+   Basic text hierarchy used in setup cards and configuration panels.
    ========================================================================== */
+
 h1{
   margin: 0 0 8px;
   font-size: 20px;
@@ -121,6 +165,7 @@ h2{
   position: relative;
 }
 
+/* Decorative underline for section headings. */
 h2::after{
   content: "";
   display: block;
@@ -137,9 +182,14 @@ p{
   color: #cfcfcf;
 }
 
+
 /* ==========================================================================
    5) Forms
+
+   Shared styling for input fields, selects, textareas and buttons.
+   Used across protocol design, calibration and result screens.
    ========================================================================== */
+
 label{
   display: block;
   margin: 10px 0 4px;
@@ -229,9 +279,13 @@ textarea:focus{
   border-color: rgba(255,255,255,0.16);
 }
 
+
 /* ==========================================================================
    6) Utility text
+
+   Reusable muted text styles for hints, descriptions and secondary metadata.
    ========================================================================== */
+
 .muted{
   color: var(--muted);
   font-size: 12px;
@@ -248,9 +302,13 @@ textarea:focus{
   list-style-type: disc;
 }
 
+
 /* ==========================================================================
    7) Layout helpers
+
+   Small reusable layout classes for rows, separators and action areas.
    ========================================================================== */
+
 .row{
   display: flex;
   gap: 10px;
@@ -281,9 +339,14 @@ textarea:focus{
   margin-bottom: 10px;
 }
 
+
 /* ==========================================================================
    8) HUD
+
+   Experiment heads-up display.
+   It stays above the experiment surface but does not intercept pointer input.
    ========================================================================== */
+
 #hud{
   position: absolute;
   top: calc(10px + max(var(--sat), 0px));
@@ -309,9 +372,14 @@ textarea:focus{
   color: rgba(233,233,233,0.9);
 }
 
+
 /* ==========================================================================
    9) Crosshair
+
+   Optional visual marker.
+   It is hidden during scientific runtime to avoid assisting the participant.
    ========================================================================== */
+
 #crosshair{
   position: absolute;
   width: 10px;
@@ -328,9 +396,15 @@ textarea:focus{
   display: none !important;
 }
 
+
 /* ==========================================================================
    10) Dynamic targets
+
+   Visual representation of experiment targets.
+   Target position and dimensions are controlled by JavaScript.
+   Shape classes define the visible geometry.
    ========================================================================== */
+
 .dynamicTarget{
   position: absolute;
   transform: translate(-50%, -50%);
@@ -355,6 +429,7 @@ textarea:focus{
   filter: grayscale(1);
 }
 
+/* Polygon target shapes. */
 .dynamicTarget.shape-triangle{
   border-radius: 0;
   -webkit-clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
@@ -385,6 +460,7 @@ textarea:focus{
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
 }
 
+/* One-dimensional band targets keep rectangular geometry. */
 .dynamicTarget.shape-band1d_h,
 .dynamicTarget.shape-band1d_v{
   border-radius: var(--targetRadius);
@@ -392,9 +468,13 @@ textarea:focus{
   clip-path: none;
 }
 
+
 /* ==========================================================================
    11) KPI + blocks
+
+   Compact information blocks used for calibration, results and summaries.
    ========================================================================== */
+
 .block{
   padding: 10px;
   border-radius: 12px;
@@ -439,9 +519,13 @@ textarea:focus{
   font-variant-numeric: tabular-nums;
 }
 
+
 /* ==========================================================================
    12) Overlay panels
+
+   Fullscreen panels shown before or after the experiment.
    ========================================================================== */
+
 .panel{
   position: absolute;
   inset: 0;
@@ -474,9 +558,14 @@ textarea:focus{
   z-index: 100;
 }
 
+
 /* ==========================================================================
    13) Cards + scroll
+
+   Card containers used for setup, configuration and result screens.
+   Includes custom scrollbar styling.
    ========================================================================== */
+
 .card{
   width: min(920px, 92vw);
   background: var(--panel);
@@ -535,9 +624,14 @@ textarea:focus{
   background: transparent;
 }
 
+
 /* ==========================================================================
    14) Title row + calibration status
+
+   Header area of the start screen.
+   Also displays the current calibration validity status.
    ========================================================================== */
+
 #titleRow{
   display: flex;
   justify-content: space-between;
@@ -598,9 +692,18 @@ textarea:focus{
   font-variant-numeric: tabular-nums;
 }
 
+
 /* ==========================================================================
    15) Calibration rectangle
+
+   Visual reference object resized during calibration.
+   JavaScript reads its pixel width to compute mm/px.
+
+   The rectangle itself is passive. This avoids unwanted touch events when a
+   physical reference card is placed on a touch display. The size is controlled
+   through the external range slider on both touch and non-touch devices.
    ========================================================================== */
+
 #calibrationRectangle{
   width: 340px;
   height: 214px;
@@ -608,32 +711,52 @@ textarea:focus{
   border-radius: 14px;
   position: relative;
   background: rgba(255,255,255,0.03);
-  touch-action: none;
+  touch-action: pan-y;
   overscroll-behavior: contain;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
+/* The old resize handle is no longer displayed.
+   The slider is now the single calibration resize control. */
 #handle{
-  position: absolute;
-  right: -18px;
-  bottom: -18px;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: #e9e9e9;
-  border: 1px solid #111;
-  cursor: nwse-resize;
-  touch-action: none;
+  display: none;
 }
 
-#handle::after{
-  content: "";
-  position: absolute;
-  inset: -10px;
+.calibration-scale-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  width: min(760px, 90vw);
+  margin: 1.25rem auto 0;
+}
+
+.calibration-scale-range {
+  flex: 1;
+  min-width: 220px;
+  max-width: 620px;
+  touch-action: manipulation;
+}
+
+.calibration-scale-label {
+  font-size: 0.9rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.cardScroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* ==========================================================================
    16) Touchability panel
+
+   Finger measurement target used to estimate participant touch diameter.
    ========================================================================== */
+
 #fingerMeasureTarget{
   width: 40px;
   height: 40px;
@@ -660,9 +783,13 @@ textarea:focus{
   background: rgba(255,255,255,0.92);
 }
 
+
 /* ==========================================================================
    17) Run mode visibility
+
+   When the experiment is running, setup panels are hidden.
    ========================================================================== */
+
 .running .setupPanel,
 .running .panel{
   display: none !important;
@@ -672,9 +799,13 @@ textarea:focus{
   display: none !important;
 }
 
+
 /* ==========================================================================
    18) Text safety
+
+   Prevents long protocol names, comments or labels from breaking the layout.
    ========================================================================== */
+
 .card,
 .pill,
 .muted,
@@ -686,9 +817,13 @@ p{
   word-break: break-word;
 }
 
+
 /* ==========================================================================
    19) Hints / validation messages
+
+   Reusable visual states for user guidance and validation feedback.
    ========================================================================== */
+
 .hint{
   font-size: 12px;
   margin-top: 4px;
@@ -742,9 +877,13 @@ p{
   color: rgba(140,255,160,0.85);
 }
 
+
 /* ==========================================================================
    20) Button variants
+
+   Specialized button styles used for actions, icons and primary start actions.
    ========================================================================== */
+
 .pillBtn{
   border-radius: 999px;
   padding: 8px 12px;
@@ -781,14 +920,18 @@ p{
   color: rgba(140,255,160,0.9);
 }
 
-/* Hide debug button unless JS enables it */
+/* Hidden by default. JavaScript can enable this button in debug mode. */
 #hudDebugBtn{
   display: none;
 }
 
+
 /* ==========================================================================
    21) Form grids
+
+   Responsive grid layouts for protocol and session configuration forms.
    ========================================================================== */
+
 .formGrid{
   display: grid;
   gap: 12px;
@@ -829,9 +972,13 @@ p{
   }
 }
 
+
 /* ==========================================================================
    22) Start screen sections
+
+   Main start screen areas for subject setup, protocol design and run start.
    ========================================================================== */
+
 #sessionCommentBox{
   margin: 10px 0 14px;
 }
@@ -871,9 +1018,13 @@ p{
   justify-content: flex-end;
 }
 
+
 /* ==========================================================================
    23) End panel
+
+   Result screen shown after experiment completion.
    ========================================================================== */
+
 #endPanel .kpi{
   margin: 12px 0 16px;
 }
@@ -894,9 +1045,14 @@ p{
   }
 }
 
+
 /* ==========================================================================
    24) Session config panel
+
+   Large protocol/session editor panel.
+   Uses fixed header/footer and scrollable block body.
    ========================================================================== */
+
 #sessionConfigPanel .sessionCard{
   width: min(1240px, 96vw);
   max-height: 92vh;
@@ -962,9 +1118,14 @@ p{
   background: rgba(255,255,255,0.35);
 }
 
+
 /* ==========================================================================
    25) Session blocks
+
+   Individual blocks inside the session/protocol editor.
+   Each block contains shape, parameter mode and condition inputs.
    ========================================================================== */
+
 #sessionConfigPanel .sessionBlock{
   padding: 14px;
   margin: 12px 0;
@@ -1022,9 +1183,13 @@ p{
   }
 }
 
+
 /* ==========================================================================
    26) Responsive base
+
+   General layout adaptations for small screens.
    ========================================================================== */
+
 @media (max-width: 520px){
   input[type="text"],
   input[type="number"],
@@ -1057,9 +1222,13 @@ p{
   }
 }
 
+
 /* ==========================================================================
    27) Protocol list
+
+   Visual styling for saved protocols loaded from backend storage.
    ========================================================================== */
+
 .protocolList{
   display: flex;
   flex-direction: column;
@@ -1134,9 +1303,13 @@ p{
   }
 }
 
+
 /* ==========================================================================
    28) Random toggles
+
+   Circular toggle buttons used to enable/disable random sampling for A/W/ID.
    ========================================================================== */
+
 .fieldLabel{
   display: flex;
   align-items: center;
@@ -1179,9 +1352,14 @@ p{
   cursor: not-allowed;
 }
 
+
 /* ==========================================================================
    29) Monte Carlo summary
+
+   Summary box shown after Monte Carlo feasibility checks.
+   Displays warnings, diagnostics and KPI-style metrics.
    ========================================================================== */
+
 .monteCarloSummary{
   margin-top: 14px;
   padding: 14px;

@@ -7,11 +7,18 @@ Organigram reference:
   -> Database Facade
 
 Responsibility:
-Provides a stable import interface for database helpers.
+Provides a stable import interface for database helpers used by route modules
+and backend services
 
 Important:
-Route modules should import from app.db, not directly from app.database.*.
-This keeps the backend architecture easy to refactor.
+Route modules should import database-related helpers from app.db, not directly
+from app.database.*. This keeps the backend architecture easier to refactor
+because internal database modules can be reorganized without changing route
+imports
+
+Design rule:
+This module should not contain database logic itself. It should only re-export
+selected functions, constants and helpers from the internal database package
 """
 
 from __future__ import annotations

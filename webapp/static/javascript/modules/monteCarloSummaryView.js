@@ -14,13 +14,51 @@
  * It does not run the simulation.
  */
 
+/**
+ * Render a Monte Carlo simulation summary into the experiment design UI.
+ *
+ * Args:
+ *   dom: Centralized DOM reference object from getDom().
+ *   simulation: Monte Carlo protocol simulation result object.
+ *
+ * Returns:
+ *   undefined.
+ *
+ * Side effects:
+ *   Replaces dom.monteCarloSummary.innerHTML and makes the summary panel visible.
+ *
+ * Expected simulation structure:
+ *   - simulation.meta: global Monte Carlo metadata and diagnostics
+ *   - simulation.blocks: per-block Monte Carlo result objects
+ *
+ * Rendered information:
+ *   - global KPI summary
+ *   - warning messages
+ *   - per-block clamp statistics
+ *   - link to the extended Monte Carlo dashboard
+ *
+ * Important:
+ *   This function only displays results. The simulation itself is computed in
+ *   monteCarlo.js before this renderer is called.
+ */
 export function renderMonteCarloSummary(dom, simulation) {
   if (!dom.monteCarloSummary) return;
 
+  // Global metadata produced by the Monte Carlo simulation.
   const meta = simulation.meta ?? {};
+
+  // Per-block simulation results.
   const blocks = simulation.blocks ?? [];
+
+  // Warning list collected during the Monte Carlo protocol analysis.
   const warnings = meta.warnings ?? [];
 
+  /**
+   * Build table rows for per-block Monte Carlo diagnostics.
+   *
+   * Each row shows how much of the planned W distribution was clamped to the
+   * minimum or maximum target-size constraints.
+   */
   const blockRows =
     blocks.map((block) => {
       const counts = block.result?.counts ?? {};
@@ -39,6 +77,12 @@ export function renderMonteCarloSummary(dom, simulation) {
       `;
     }).join("");
 
+  /**
+   * Build the warning section.
+   *
+   * If warnings exist, each warning is shown with the corresponding block
+   * number. Otherwise, a neutral message is displayed.
+   */
   const warningHtml =
     warnings.length
       ? `
@@ -53,6 +97,8 @@ export function renderMonteCarloSummary(dom, simulation) {
       `
       : `<p class="muted">Keine kritischen Monte-Carlo-Warnungen.</p>`;
 
+  // Render the complete summary panel.
+  // UI text is German by design.
   dom.monteCarloSummary.innerHTML = `
     <h3>Monte-Carlo-Analyse</h3>
 
@@ -97,5 +143,6 @@ export function renderMonteCarloSummary(dom, simulation) {
     </div>
   `;
 
+  // Make the summary visible after content has been rendered.
   dom.monteCarloSummary.style.display = "block";
 }

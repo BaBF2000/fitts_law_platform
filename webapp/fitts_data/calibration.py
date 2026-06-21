@@ -2,83 +2,160 @@
 Calibration helpers for Fitts experiment data.
 
 Responsibility:
-Provides conversion helpers between pixel-based and millimeter-based values.
+    Provides conversion helpers between pixel-based and millimetre-based values.
+
+Organigram reference:
+    Persistence & Backend
+    -> Fitts Data Framework
+       -> Calibration Helpers
 
 Important:
-The database stores both planned/effective pixel and millimeter values when
-available. These helpers centralize fallback behavior when one unit is missing.
+    The database can store both pixel-based and millimetre-based values for
+    planned and effective experiment parameters.
+
+    These helpers centralise the fallback behaviour when one unit is missing.
+    This keeps metric modules such as metrics.py simple and avoids duplicated
+    conversion logic.
 """
 
 from __future__ import annotations
 
+import math
+from typing import Any
 
-def px_to_mm(
-    value_px: float | None,
-    mm_per_px: float | None,
-) -> float | None:
-    """
-    Convert pixels to millimeters.
 
-    Returns None if the value or calibration factor is missing.
+def _as_finite_float(value: Any) -> float | None:
     """
-    if value_px is None or mm_per_px is None:
+    Convert a raw value to a finite float.
+
+    Args:
+        value:
+            Raw value from the database or from a computed metric.
+
+    Returns:
+        A finite float, or None if the value is missing, invalid, NaN or
+        infinite.
+    """
+    if value is None:
         return None
 
     try:
-        return float(value_px) * float(mm_per_px)
+        number = float(value)
     except (TypeError, ValueError):
         return None
 
+    if not math.isfinite(number):
+        return None
 
-def mm_to_px(
-    value_mm: float | None,
-    mm_per_px: float | None,
+    return number
+
+
+def px_to_mm(
+    value_px: Any,
+    mm_per_px: Any,
 ) -> float | None:
     """
-    Convert millimeters to pixels.
+    Convert pixels to millimetres.
 
-    Returns None if the value or calibration factor is missing.
+    Args:
+        value_px:
+            Pixel-based value.
+        mm_per_px:
+            Calibration factor in millimetres per pixel.
+
+    Returns:
+        The converted value in millimetres, or None if the conversion cannot
+        be performed.
     """
-    if value_mm is None or mm_per_px in (None, 0):
+    px = _as_finite_float(value_px)
+    factor = _as_finite_float(mm_per_px)
+
+    if px is None or factor is None:
         return None
 
-    try:
-        return float(value_mm) / float(mm_per_px)
-    except (TypeError, ValueError, ZeroDivisionError):
+    return px * factor
+
+
+def mm_to_px(
+    value_mm: Any,
+    mm_per_px: Any,
+) -> float | None:
+    """
+    Convert millimetres to pixels.
+
+    Args:
+        value_mm:
+            Millimetre-based value.
+        mm_per_px:
+            Calibration factor in millimetres per pixel.
+
+    Returns:
+        The converted value in pixels, or None if the conversion cannot be
+        performed.
+    """
+    mm = _as_finite_float(value_mm)
+    factor = _as_finite_float(mm_per_px)
+
+    if mm is None or factor is None:
         return None
+
+    if factor <= 0:
+        return None
+
+    return mm / factor
 
 
 def choose_unit_value(
     *,
-    px_value: float | None,
-    mm_value: float | None,
-    mm_per_px: float | None,
+    px_value: Any,
+    mm_value: Any,
+    mm_per_px: Any,
     calibrated: bool,
 ) -> float | None:
     """
-    Return the requested unit value.
+    Return the requested unit value with fallback conversion.
 
-    If calibrated=True:
-    - prefer mm_value
-    - otherwise derive from px_value using mm_per_px
+    Behaviour:
+        calibrated=True:
+            Prefer the millimetre value.
+            If it is missing, derive it from the pixel value using mm_per_px.
 
-    If calibrated=False:
-    - prefer px_value
-    - otherwise derive from mm_value using mm_per_px
+        calibrated=False:
+            Prefer the pixel value.
+            If it is missing, derive it from the millimetre value using
+            mm_per_px.
+
+    Args:
+        px_value:
+            Pixel-based value.
+        mm_value:
+            Millimetre-based value.
+        mm_per_px:
+            Calibration factor in millimetres per pixel.
+        calibrated:
+            If True, return millimetre values.
+            If False, return pixel values.
+
+    Returns:
+        A value in the requested unit, or None if neither the direct value nor
+        the fallback conversion is available.
     """
+    px = _as_finite_float(px_value)
+    mm = _as_finite_float(mm_value)
+
     if calibrated:
-        if mm_value is not None:
-            return float(mm_value)
+        if mm is not None:
+            return mm
 
         return px_to_mm(
-            value_px=px_value,
+            value_px=px,
             mm_per_px=mm_per_px,
         )
 
-    if px_value is not None:
-        return float(px_value)
+    if px is not None:
+        return px
 
     return mm_to_px(
-        value_mm=mm_value,
+        value_mm=mm,
         mm_per_px=mm_per_px,
     )

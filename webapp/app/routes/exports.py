@@ -42,7 +42,26 @@ from .helpers import (
 @bp.get("/export/participant/<participant_id>.csv")
 def export_participant_csv(participant_id: str):
     """
-    Export all sessions for one participant as CSV.
+    Export all saved sessions of one participant as a CSV file
+
+    Args:
+        participant_id (str): Participant identifier from the URL path
+
+    Returns:
+        flask.Response:
+            - CSV download response if data exists
+            - 403 plain-text response if admin authorization fails
+            - 404 JSON response if no matching rows exist
+
+    Database access:
+        Reads participant, session and trial data using the shared CSV_SELECT
+        base query and filters by participant_id
+
+    Side effects:
+        None. This endpoint only reads from the database
+
+    Security:
+        Requires admin authorization through require_admin()
     """
     if not require_admin():
         return forbidden_admin_response()
@@ -81,7 +100,28 @@ def export_session_csv(
     session_code: str,
 ):
     """
-    Export one participant/session pair as CSV.
+    Export one participant/session pair as a CSV file
+
+    Args:
+        participant_id (str): Participant identifier from the URL path
+        session_code (str): Session code from the URL path
+
+    Returns:
+        flask.Response:
+            - CSV download response if data exists
+            - 403 plain-text response if admin authorization fails
+            - 404 JSON response if no matching rows exist
+
+    Database access:
+        Reads participant, session and trial data using the shared CSV_SELECT
+        base query and filters by participant_id and session_code
+
+    Side effects:
+        None. This endpoint only reads from the database
+
+    Notes:
+        participant_id and session_code are sanitized with safe_name() before
+        they are used as query parameters
     """
     if not require_admin():
         return forbidden_admin_response()
@@ -125,7 +165,27 @@ def export_session_csv(
 @bp.get("/export/session_id/<int:session_id>.csv")
 def export_session_by_id_csv(session_id: int):
     """
-    Export one session by internal database id as CSV.
+    Export one session by its internal database id as a CSV file
+
+    Args:
+        session_id (int): Internal primary key of the session table
+
+    Returns:
+        flask.Response:
+            - CSV download response if data exists
+            - 403 plain-text response if admin authorization fails
+            - 404 JSON response if no matching rows exist
+
+    Database access:
+        Reads participant, session and trial data using the shared CSV_SELECT
+        base query and filters by session.id
+
+    Side effects:
+        None. This endpoint only reads from the database
+
+    Related usage:
+        Useful for dashboard links where the internal session id is already
+        known and avoids relying on participant/session code combinations
     """
     if not require_admin():
         return forbidden_admin_response()
@@ -133,6 +193,8 @@ def export_session_by_id_csv(session_id: int):
     with db() as conn:
         cur = conn.cursor()
 
+        # Reuse the shared export SELECT and add a participant filter before
+        # applying the export order.
         cur.execute(
             csv_select_base()
             + """
@@ -167,7 +229,13 @@ def export_session_by_id_csv(session_id: int):
 
 def forbidden_admin_response():
     """
-    Return a standard admin-forbidden response.
+    Return the standard response for unauthorized admin export access
+
+    Returns:
+        flask.Response: Plain-text HTTP 403 response
+
+    Related usage:
+        Used by CSV export routes when require_admin() returns False
     """
     return Response(
         "Forbidden (admin)",
@@ -178,7 +246,14 @@ def forbidden_admin_response():
 
 def no_data_response():
     """
-    Return a standard no-data JSON response.
+    Return the standard response when an export query contains no rows
+
+    Returns:
+        tuple: JSON response with ok=False and HTTP status code 404
+
+    Related usage:
+        Used by export routes when no participant/session/trial data matches
+        the requested filter
     """
     return (
         jsonify(

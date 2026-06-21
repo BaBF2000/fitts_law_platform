@@ -4,21 +4,41 @@
  * Organigram reference:
  * - Calibration
  *   → Reference Object Resize
- *   → Touch / Mouse Interaction
+ *   → Passive Touch Area
+ *   → Mouse / Pen Handle Interaction
  *
  * Responsibility:
- * Encapsulates mouse and touch resize gestures for the calibration rectangle.
+ * Encapsulates safe resize behavior for the calibration rectangle.
  *
  * Important:
+ * The calibration reference rectangle is passive for touch input. On large
+ * touch displays, a physical reference card placed on the screen may generate
+ * unwanted touch events. Therefore, direct touch resizing on the reference area
+ * is disabled. Touchscreen-safe resizing is handled through an external range
+ * slider. Mouse or pen resizing through the calibration handle remains available
+ * for desktop use.
+ *
  * This module only manages gesture state and width updates.
  * It does not compute final mm/px calibration results.
  */
 
+/**
+ * Compute the distance between two touch points.
+ *
+ * Kept as an exported helper for possible future gesture modes. Direct touch
+ * resizing is currently disabled for calibration safety.
+ */
 export function touchDistance(t1, t2) {
   const dx = t2.clientX - t1.clientX;
   const dy = t2.clientY - t1.clientY;
 
   return Math.hypot(dx, dy);
+}
+
+function preventDefaultIfCancelable(e) {
+  if (e.cancelable) {
+    e.preventDefault();
+  }
 }
 
 export function createCalibrationGestureController({
@@ -29,179 +49,79 @@ export function createCalibrationGestureController({
   maybeSnapWidth,
 }) {
   let dragging = false;
+  let activePointerId = null;
   let dragStartX = 0;
   let startW = 0;
 
-  let pinching = false;
-  let pinchStartDist = 0;
-  let pinchStartW = 0;
-
-  function onRectTouchStart(e) {
+  /**
+   * Start desktop-style resizing from the calibration handle.
+   *
+   * Touch input is ignored so tablet scrolling remains possible and the
+   * physical calibration card cannot resize the rectangle accidentally.
+   */
+  function onHandlePointerDown(e) {
     if (!dom.calRect) return;
 
-    e.preventDefault();
-
-    const touches = e.touches;
-    if (!touches) return;
-
-    if (touches.length === 1) {
-      dragging = true;
-      pinching = false;
-
-      dragStartX = touches[0].clientX;
-      startW = getRectWidthPx();
+    if (e.pointerType === "touch") {
       return;
     }
 
-    if (touches.length >= 2) {
-      pinching = true;
-      dragging = false;
-
-      pinchStartDist =
-        touchDistance(touches[0], touches[1]);
-
-      pinchStartW =
-        getRectWidthPx();
-    }
-  }
-
-  function onRectTouchMove(e) {
-    if (!dom.calRect) return;
-    if (!dragging && !pinching) return;
-
-    e.preventDefault();
-
-    const touches = e.touches;
-    if (!touches) return;
-
-    if (pinching && touches.length < 2) {
-      pinching = false;
-      dragging = true;
-
-      dragStartX =
-        touches[0]?.clientX ?? dragStartX;
-
-      startW =
-        getRectWidthPx();
-    } else if (!pinching && touches.length >= 2) {
-      pinching = true;
-      dragging = false;
-
-      pinchStartDist =
-        touchDistance(touches[0], touches[1]);
-
-      pinchStartW =
-        getRectWidthPx();
-    }
-
-    let newW =
-      getRectWidthPx();
-
-    if (pinching && touches.length >= 2) {
-      const dist =
-        touchDistance(touches[0], touches[1]);
-
-      const scale =
-        dist / Math.max(1, pinchStartDist);
-
-      newW =
-        pinchStartW * scale;
-    } else if (dragging && touches.length === 1) {
-      const dx =
-        touches[0].clientX - dragStartX;
-
-      newW =
-        startW + dx;
-    }
-
-    newW =
-      maybeSnapWidth(newW);
-
-    setRectWidthPx(newW);
-    updateCalReadout();
-  }
-
-  function onRectTouchEnd(e) {
-    const touches = e.touches;
-
-    if (!touches || touches.length === 0) {
-      dragging = false;
-      pinching = false;
-    }
-  }
-
-  function onHandleDown(e) {
-    if (!dom.calRect) return;
-
-    e.preventDefault();
+    preventDefaultIfCancelable(e);
 
     dragging = true;
-    pinching = false;
-
+    activePointerId = e.pointerId;
     dragStartX = e.clientX;
     startW = getRectWidthPx();
+
+    dom.handle?.setPointerCapture?.(e.pointerId);
   }
 
-  function onMouseMove(e) {
-    if (!dragging || !dom.calRect) return;
+  function onHandlePointerMove(e) {
+    if (!dragging || activePointerId !== e.pointerId || !dom.calRect) {
+      return;
+    }
 
-    const dx =
-      e.clientX - dragStartX;
+    preventDefaultIfCancelable(e);
 
-    let newW =
-      startW + dx;
+    const dx = e.clientX - dragStartX;
 
-    newW =
-      maybeSnapWidth(newW);
+    let newW = startW + dx;
+    newW = maybeSnapWidth(newW);
 
     setRectWidthPx(newW);
     updateCalReadout();
   }
 
-  function onMouseUp() {
+  function onHandlePointerUp(e) {
+    if (activePointerId !== e.pointerId) return;
+
     dragging = false;
+    activePointerId = null;
+
+    dom.handle?.releasePointerCapture?.(e.pointerId);
   }
 
   function bind() {
-    dom.calRect?.addEventListener(
-      "touchstart",
-      onRectTouchStart,
-      { passive: false }
-    );
-
-    dom.calRect?.addEventListener(
-      "touchmove",
-      onRectTouchMove,
-      { passive: false }
-    );
-
-    dom.calRect?.addEventListener(
-      "touchend",
-      onRectTouchEnd,
-      { passive: false }
-    );
-
-    dom.calRect?.addEventListener(
-      "touchcancel",
-      onRectTouchEnd,
+    dom.handle?.addEventListener(
+      "pointerdown",
+      onHandlePointerDown,
       { passive: false }
     );
 
     dom.handle?.addEventListener(
-      "mousedown",
-      onHandleDown,
+      "pointermove",
+      onHandlePointerMove,
       { passive: false }
     );
 
-    window.addEventListener(
-      "mousemove",
-      onMouseMove,
-      { passive: false }
+    dom.handle?.addEventListener(
+      "pointerup",
+      onHandlePointerUp
     );
 
-    window.addEventListener(
-      "mouseup",
-      onMouseUp
+    dom.handle?.addEventListener(
+      "pointercancel",
+      onHandlePointerUp
     );
   }
 

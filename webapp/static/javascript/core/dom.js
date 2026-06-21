@@ -27,9 +27,27 @@
  * - Keep elements grouped by UI area.
  */
 
-
+// Helper around document.getElementById()
 import { $ } from "./helpers.js";
 
+/**
+ * Collect all DOM references used by frontend modules.
+ *
+ * Returns:
+ *   Object containing references to application panels, buttons, form fields,
+ *   status displays and runtime UI elements.
+ *
+ * Side effects:
+ *   None. This function only reads DOM elements by ID.
+ *
+ * Important:
+ *   Some references may be null if the corresponding element is not present in
+ *   templates/index.html. Feature modules should handle optional elements
+ *   defensively when an element is not required for every screen.
+ *
+ * Related files:
+ *   Element IDs must stay synchronized with templates/index.html.
+ */
 export function getDom() {
   return {
     // ------------------------------------------------------------
@@ -82,9 +100,25 @@ export function getDom() {
     // Calibration panel elements
     // ------------------------------------------------------------
     calRect: $("calibrationRectangle"),
+    handle: $("handle"),
+    calScaleRange: $("calScaleRange"),
+
+    // Optional legacy calibration display fields.
+    // May be null if the current template does not render them.
     calPx: $("calibrationPx"),
     calMmPerPx: $("calibrationMmPerPx"),
-    handle: $("handle"),
+
+    // Calibration navigation and action buttons
+    buttonCalibration: $("buttonCalibration"),
+    buttonBack: $("buttonBack"),
+    buttonValidateCal: $("buttonValidateCalibration"),
+    btnClearCalibration: $("btnClearCalibration"),
+
+    // Calibration status badge
+    calStatus: $("calStatus"),
+    calDot: $("calDot"),
+    calStatusText: $("calStatusText"),
+    calStatusMeta: $("calStatusMeta"),
 
     // ------------------------------------------------------------
     // Touchability panel elements
@@ -101,11 +135,15 @@ export function getDom() {
     // ------------------------------------------------------------
     // Primary control buttons
     // ------------------------------------------------------------
-    buttonCalibration: $("buttonCalibration"),
-    btnClearCalibration: $("btnClearCalibration"),
     buttonTouchability: $("buttonTouchability"),
     buttonSessionConfig: $("buttonSessionConfig"),
     buttonStart: $("buttonStart"),
+
+    // ------------------------------------------------------------
+    // Touchability navigation buttons
+    // ------------------------------------------------------------
+    btnTouchabilityFallback: $("btnTouchabilityFallback"),
+    btnTouchabilityBack: $("btnTouchabilityBack"),
 
     // ------------------------------------------------------------
     // Experiment design workflow
@@ -119,20 +157,11 @@ export function getDom() {
     // Protocol management buttons
     // ------------------------------------------------------------
     btnSaveProtocol: $("btnSaveProtocol"),
+
+    // Optional legacy/local protocol controls.
+    // May be null depending on the current protocol UI variant.
     btnLoadProtocol: $("btnLoadProtocol"),
     btnClearProtocol: $("btnClearProtocol"),
-
-    // ------------------------------------------------------------
-    // Calibration navigation buttons
-    // ------------------------------------------------------------
-    buttonBack: $("buttonBack"),
-    buttonValidateCal: $("buttonValidateCalibration"),
-
-    // ------------------------------------------------------------
-    // Touchability navigation buttons
-    // ------------------------------------------------------------
-    btnTouchabilityFallback: $("btnTouchabilityFallback"),
-    btnTouchabilityBack: $("btnTouchabilityBack"),
 
     // ------------------------------------------------------------
     // Session design panel actions
@@ -144,6 +173,7 @@ export function getDom() {
     blocksContainer: $("blocksContainer"),
     btnMonteCarlo: $("btnMonteCarlo"),
     monteCarloSummary: $("monteCarloSummary"),
+
     // ------------------------------------------------------------
     // Protocol metadata
     // ------------------------------------------------------------
@@ -152,7 +182,7 @@ export function getDom() {
     aSampling: $("aSampling"),
     wSampling: $("wSampling"),
     idSampling: $("idSampling"),
-    
+
     // ------------------------------------------------------------
     // End panel actions
     // ------------------------------------------------------------
@@ -163,8 +193,15 @@ export function getDom() {
     // ------------------------------------------------------------
     // Admin settings
     // ------------------------------------------------------------
+    btnAdminSettings: $("btnAdminSettings"),
     adminSettingsPanel: $("adminSettingsPanel"),
-
-
+    btnAdminSave: $("btnAdminSave"),
+    btnAdminReset: $("btnAdminReset"),
+    btnAdminClose: $("btnAdminClose"),
+    adminMinVisibleTargetPx: $("adminMinVisibleTargetPx"),
+    adminTouchSafetyFactor: $("adminTouchSafetyFactor"),
+    adminMaxTargetSizeRatio: $("adminMaxTargetSizeRatio"),
+    adminMinAmplitudeMarginPx: $("adminMinAmplitudeMarginPx"),
+    adminDefaultRequiredOverlap: $("adminDefaultRequiredOverlap"),
   };
 }

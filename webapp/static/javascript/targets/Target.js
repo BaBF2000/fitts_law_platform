@@ -53,9 +53,21 @@ import {
 } from "../core/geometry.js";
 
 /* -------------------------------------------------------------------------- */
-/* Shape definitions                                                           */
+/* Shape definitions                                                          */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Polygon-like target shapes expressed as percentages of the target rectangle.
+ *
+ * Coordinates are defined in a 100 × 100 local coordinate system:
+ * - x = 0 means left edge of the target rectangle
+ * - x = 100 means right edge
+ * - y = 0 means top edge
+ * - y = 100 means bottom edge
+ *
+ * These percentage vertices are converted to absolute pixel coordinates by
+ * polygonFromPercentRect().
+ */
 const POLYGON_PERCENT_VERTICES = {
   triangle: [
     [50, 0],
@@ -99,6 +111,12 @@ const POLYGON_PERCENT_VERTICES = {
   ],
 };
 
+/**
+ * CSS classes that represent non-default target shapes.
+ *
+ * These classes are removed before each render() call so that a reused DOM
+ * element does not keep the previous target shape.
+ */
 const CSS_SHAPE_CLASSES = [
   "shape-triangle",
   "shape-pentagon",
@@ -109,10 +127,38 @@ const CSS_SHAPE_CLASSES = [
   "shape-band1d_v",
 ];
 
+/**
+ * Check whether a target shape is a circle.
+ *
+ * Args:
+ *   shape: Target shape identifier.
+ *
+ * Returns:
+ *   true if the shape is "circle", otherwise false.
+ *
+ * Side effects:
+ *   None.
+ */
 function isCircle(shape) {
   return shape === "circle";
 }
 
+/**
+ * Check whether a target shape can be treated as a rectangle.
+ *
+ * Args:
+ *   shape: Target shape identifier.
+ *
+ * Returns:
+ *   true for square targets and 1D band targets, otherwise false.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Notes:
+ *   1D bands are geometrically rectangular for hit testing and effective-width
+ *   calculations, even though their size is adjusted by TargetFactory.
+ */
 function isRectLike(shape) {
   return (
     shape === "square" ||
@@ -121,6 +167,18 @@ function isRectLike(shape) {
   );
 }
 
+/**
+ * Return percentage-based polygon vertices for a polygon-like target shape.
+ *
+ * Args:
+ *   shape: Target shape identifier.
+ *
+ * Returns:
+ *   Array of percentage vertices, or null if the shape is not polygon-like.
+ *
+ * Side effects:
+ *   None.
+ */
 function getPolygonPercentVertices(shape) {
   return POLYGON_PERCENT_VERTICES[shape] ?? null;
 }
@@ -129,6 +187,21 @@ function getPolygonPercentVertices(shape) {
 /* Geometry helpers                                                           */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Build a serializable circle geometry description for a target.
+ *
+ * Args:
+ *   target: Target instance.
+ *
+ * Returns:
+ *   Object describing a circle with type, center and radius.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Related usage:
+ *   Used by getHitGeometryJSON() for result export.
+ */
 function buildCircleGeometry(target) {
   return {
     type: "circle",
@@ -138,6 +211,21 @@ function buildCircleGeometry(target) {
   };
 }
 
+/**
+ * Build a serializable rectangle geometry description for a target.
+ *
+ * Args:
+ *   target: Target instance.
+ *
+ * Returns:
+ *   Object describing a rectangle with type, left, top, width and height.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Related usage:
+ *   Used as export geometry for square, band and fallback target shapes.
+ */
 function buildRectGeometry(target) {
   return {
     type: "rect",
@@ -148,6 +236,22 @@ function buildRectGeometry(target) {
   };
 }
 
+/**
+ * Build a serializable polygon geometry description for a target.
+ *
+ * Args:
+ *   target: Target instance.
+ *
+ * Returns:
+ *   Object with type="polygon" and absolute pixel vertices, or null if the
+ *   target shape has no polygon definition.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Related usage:
+ *   Used for polygon-like target export and hit geometry inspection.
+ */
 function buildPolygonGeometry(target) {
   const polygonPct =
     getPolygonPercentVertices(target.shape);
@@ -163,6 +267,18 @@ function buildPolygonGeometry(target) {
   };
 }
 
+/**
+ * Build the CSS class name for a target shape.
+ *
+ * Args:
+ *   shape: Target shape identifier.
+ *
+ * Returns:
+ *   CSS class name such as "shape-triangle" or "shape-band1d_h".
+ *
+ * Side effects:
+ *   None.
+ */
 function getShapeClass(shape) {
   return `shape-${shape}`;
 }
@@ -171,7 +287,38 @@ function getShapeClass(shape) {
 /* Target class                                                               */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Runtime representation of one experiment target.
+ *
+ * Responsibility:
+ * Stores target shape, position, dimensions, touch validation parameters and
+ * provides geometry, rendering, hit-testing and export methods.
+ *
+ * Important:
+ * Target positions are expected to be resolved before construction, usually by
+ * the experiment engine and TargetFactory.
+ */
 export class Target {
+  /**
+   * Create one target instance.
+   *
+   * Args:
+   *   shape: Target shape identifier. Defaults to "circle".
+   *   x: Target center x-coordinate in viewport CSS pixels.
+   *   y: Target center y-coordinate in viewport CSS pixels.
+   *   widthPx: Target width in CSS pixels.
+   *   heightPx: Target height in CSS pixels. Defaults to widthPx.
+   *   touchDiameterPx: Touch/finger diameter used to derive minimum target size.
+   *   requiredOverlap: Required overlap ratio between touch area and target.
+   *
+   * Side effects:
+   *   None.
+   *
+   * Behavior:
+   *   - Coordinates are converted to numbers.
+   *   - requiredOverlap is clamped to [0, 1].
+   *   - Target width/height are never smaller than getMinTargetSizePx().
+   */
   constructor({
     shape = "circle",
     x = 0,
@@ -183,21 +330,28 @@ export class Target {
   }) {
     this.shape = shape;
 
+    // Store target center coordinates as numeric values.
     this.x = Number(x);
     this.y = Number(y);
 
+    // Normalize the touch diameter used for size constraints and validation.
     this.touchDiameterPx =
       Number(touchDiameterPx) ||
       DEFAULT_TOUCH_DIAMETER_PX;
 
+    // Required overlap is always constrained to the valid ratio range.
     this.requiredOverlap =
       clamp01(requiredOverlap);
 
+    // Compute the minimum target size from the current touch model and
+    // experiment constraints.
     const minSizePx =
       getMinTargetSizePx({
         touchDiameterPx: this.touchDiameterPx,
       });
 
+    // Width and height are normalized independently, but both respect the same
+    // minimum size to preserve touchability.
     this.widthPx =
       Math.max(
         Number(widthPx) || minSizePx,
@@ -211,14 +365,44 @@ export class Target {
       );
   }
 
+  /**
+   * Left edge of the target bounding box.
+   *
+   * Returns:
+   *   x-coordinate of the left edge in CSS pixels.
+   *
+   * Side effects:
+   *   None.
+   */
   get left() {
     return this.x - this.widthPx / 2;
   }
 
+  /**
+   * Top edge of the target bounding box.
+   *
+   * Returns:
+   *   y-coordinate of the top edge in CSS pixels.
+   *
+   * Side effects:
+   *   None.
+   */
   get top() {
     return this.y - this.heightPx / 2;
   }
 
+  /**
+   * Axis-aligned bounding rectangle of the target.
+   *
+   * Returns:
+   *   Object with left, top, width and height in CSS pixels.
+   *
+   * Side effects:
+   *   None.
+   *
+   * Related usage:
+   *   Used for rectangle hit testing, polygon conversion and export geometry.
+   */
   get rect() {
     return {
       left: this.left,
@@ -228,6 +412,16 @@ export class Target {
     };
   }
 
+  /**
+   * Return percentage vertices for this target's polygon shape.
+   *
+   * Returns:
+   *   Polygon vertices in percentage coordinates, or null if this target is not
+   *   polygon-like.
+   *
+   * Side effects:
+   *   None.
+   */
   getPolygonPercentVertices() {
     return getPolygonPercentVertices(this.shape);
   }
@@ -236,9 +430,31 @@ export class Target {
   /* Hit testing                                                              */
   /* ------------------------------------------------------------------------ */
 
+  /**
+   * Check whether a point lies inside the target.
+   *
+   * Args:
+   *   px: Point x-coordinate in CSS pixels.
+   *   py: Point y-coordinate in CSS pixels.
+   *
+   * Returns:
+   *   true if the point lies inside the target geometry, otherwise false.
+   *
+   * Side effects:
+   *   None.
+   *
+   * Behavior:
+   *   - First checks the bounding rectangle as a fast rejection test.
+   *   - Circles use circle hit testing.
+   *   - Square and 1D band shapes use rectangle hit testing.
+   *   - Polygon-like shapes use polygon hit testing.
+   *   - Unknown shapes fall back to the bounding rectangle.
+   */
   containsPoint(px, py) {
     const rect = this.rect;
 
+    // Fast rejection: if the point is outside the bounding box, it cannot be
+    // inside any supported target shape.
     if (!pointInRect(px, py, rect)) {
       return false;
     }
@@ -265,14 +481,32 @@ export class Target {
       return pointInPolygon(px, py, verts);
     }
 
+    // Fallback for unknown shapes: the bounding rectangle is treated as the hit
+    // area so the target remains usable.
     return true;
   }
 
   /**
    * Estimate how much of a circular touch area overlaps this target.
    *
-   * The estimation uses point sampling. This is fast enough for runtime
-   * validation and independent of the concrete target shape.
+   * Args:
+   *   touchArea: TouchArea instance representing the finger contact circle.
+   *   stepPx: Sampling step in CSS pixels. Defaults to OVERLAP_SAMPLE_STEP_PX.
+   *
+   * Returns:
+   *   Estimated overlap ratio in the range [0, 1].
+   *
+   * Side effects:
+   *   None.
+   *
+   * Behavior:
+   *   The touch circle is sampled on a regular grid. Points outside the touch
+   *   circle are ignored. The ratio of sampled touch points that also lie inside
+   *   the target is returned.
+   *
+   * Notes:
+   *   This is an approximation. Smaller step sizes increase precision but also
+   *   increase runtime cost.
    */
   estimateOverlapWithTouch(
     touchArea,
@@ -288,6 +522,7 @@ export class Target {
         const px = touchArea.x + dx;
         const py = touchArea.y + dy;
 
+        // Only sample points that are actually part of the circular touch area.
         if (!touchArea.containsPoint(px, py)) {
           continue;
         }
@@ -305,6 +540,24 @@ export class Target {
       : inside / total;
   }
 
+  /**
+   * Validate whether a touch area satisfies the required overlap.
+   *
+   * Args:
+   *   touchArea: TouchArea instance to validate against this target.
+   *
+   * Returns:
+   *   Object containing:
+   *   - valid: true if measured overlap is sufficient
+   *   - measuredOverlap: estimated overlap ratio
+   *   - requiredOverlap: configured overlap threshold
+   *
+   * Side effects:
+   *   None.
+   *
+   * Related usage:
+   *   Used during runtime hit validation.
+   */
   validateTouch(touchArea) {
     const measuredOverlap =
       this.estimateOverlapWithTouch(touchArea);
@@ -320,6 +573,29 @@ export class Target {
   /* DOM rendering                                                            */
   /* ------------------------------------------------------------------------ */
 
+  /**
+   * Render this target into an existing DOM element.
+   *
+   * Args:
+   *   element: DOM element used to display the target.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Mutates the DOM element's classes and inline styles.
+   *
+   * Behavior:
+   *   - Adds a dynamicTarget class for non-primary target elements.
+   *   - Removes previous shape classes before applying the current shape.
+   *   - Applies border radius and CSS shape class depending on target shape.
+   *   - Sets width, height, left, top and display style.
+   *
+   * Important:
+   *   The CSS positioning assumes that left/top refer to the target center.
+   *   The corresponding stylesheet must therefore use a centering transform
+   *   such as translate(-50%, -50%).
+   */
   render(element) {
     if (!element) return;
 
@@ -327,6 +603,7 @@ export class Target {
       element.classList.add("dynamicTarget");
     }
 
+    // Remove all previously applied shape classes before rendering this target.
     element.classList.remove(...CSS_SHAPE_CLASSES);
 
     if (isCircle(this.shape)) {
@@ -352,6 +629,23 @@ export class Target {
   /* Export geometry                                                          */
   /* ------------------------------------------------------------------------ */
 
+  /**
+   * Build a serializable geometry description of this target.
+   *
+   * Returns:
+   *   Geometry object describing the target as a circle, polygon or rectangle.
+   *
+   * Side effects:
+   *   None.
+   *
+   * Behavior:
+   *   - Circle targets export circle geometry.
+   *   - Polygon-like targets export absolute polygon vertices.
+   *   - Square, band and unknown shapes export rectangle geometry.
+   *
+   * Related usage:
+   *   The returned object is serialized into target_hit_geom_json.
+   */
   getHitGeometryJSON() {
     if (isCircle(this.shape)) {
       return buildCircleGeometry(this);
@@ -371,6 +665,34 @@ export class Target {
   /* Effective width on movement axis                                         */
   /* ------------------------------------------------------------------------ */
 
+  /**
+   * Compute the target width along the movement axis.
+   *
+   * Args:
+   *   fromX: Movement start x-coordinate in CSS pixels.
+   *   fromY: Movement start y-coordinate in CSS pixels.
+   *   toX: Movement end x-coordinate in CSS pixels.
+   *   toY: Movement end y-coordinate in CSS pixels.
+   *
+   * Returns:
+   *   Object containing:
+   *   - widthPx: geometric target width along the movement axis, or NaN
+   *   - c: first intersection point on the target boundary, or null
+   *   - d: last intersection point on the target boundary, or null
+   *   - axis_from_x / axis_from_y: movement axis start point
+   *   - axis_to_x / axis_to_y: movement axis end point
+   *
+   * Side effects:
+   *   None.
+   *
+   * Behavior:
+   *   The movement direction is normalized and used as an infinite line.
+   *   The function intersects this line with the target boundary and measures
+   *   the distance between the first and last intersection.
+   *
+   * Notes:
+   *   If the movement axis is invalid or has zero length, widthPx is NaN.
+   */
   getWidthOnMovementAxis(fromX, fromY, toX, toY) {
     const dir =
       normalizeVector(toX - fromX, toY - fromY);
@@ -429,6 +751,7 @@ export class Target {
             verts
           );
       } else {
+        // Fallback for unknown shapes: use the bounding rectangle.
         hits =
           lineRectIntersections(
             linePoint,
@@ -453,6 +776,20 @@ export class Target {
   /* Result export                                                            */
   /* ------------------------------------------------------------------------ */
 
+  /**
+   * Serialize target information for result rows.
+   *
+   * Returns:
+   *   Object containing target shape, position, dimensions, overlap threshold
+   *   and serialized hit geometry.
+   *
+   * Side effects:
+   *   None.
+   *
+   * Related usage:
+   *   The returned fields are merged into trial result rows before local CSV
+   *   export and backend persistence.
+   */
   toResultJSON() {
     return {
       target_shape: this.shape,

@@ -26,11 +26,27 @@
  * - Shape-specific decisions should stay in targets/Target.js.
  */
 
+// Numeric tolerance used to treat nearly parallel lines as parallel and to
+// avoid unstable floating-point comparisons.
 const EPSILON = 1e-9;
+
+// Distance threshold used to merge duplicate polygon intersection points,
+// especially when a line crosses exactly through a polygon vertex.
 const DUPLICATE_HIT_EPSILON = 0.001;
 
 /**
  * Check whether a point lies inside an axis-aligned rectangle.
+ *
+ * Args:
+ *   px: Point x-coordinate.
+ *   py: Point y-coordinate.
+ *   rect: Rectangle object with left, top, width and height.
+ *
+ * Returns:
+ *   true if the point lies inside or on the rectangle boundary.
+ *
+ * Side effects:
+ *   None.
  */
 export function pointInRect(px, py, rect) {
   return (
@@ -43,6 +59,17 @@ export function pointInRect(px, py, rect) {
 
 /**
  * Check whether a point lies inside a circle.
+ *
+ * Args:
+ *   px: Point x-coordinate.
+ *   py: Point y-coordinate.
+ *   circle: Circle object with cx, cy and r.
+ *
+ * Returns:
+ *   true if the point lies inside or on the circle boundary.
+ *
+ * Side effects:
+ *   None.
  */
 export function pointInCircle(px, py, circle) {
   const dx = px - circle.cx;
@@ -53,12 +80,20 @@ export function pointInCircle(px, py, circle) {
 /**
  * Check whether a point lies inside a polygon using the ray-casting algorithm.
  *
- * verts format:
- * [
- *   [x1, y1],
- *   [x2, y2],
- *   ...
- * ]
+ * Args:
+ *   px: Point x-coordinate.
+ *   py: Point y-coordinate.
+ *   verts: Polygon vertices as [[x1, y1], [x2, y2], ...].
+ *
+ * Returns:
+ *   true if the point is classified as inside the polygon.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Notes:
+ *   Boundary behavior depends on the ray-casting edge cases and should be
+ *   interpreted consistently with the target hit-testing logic.
  */
 export function pointInPolygon(px, py, verts) {
   let inside = false;
@@ -100,7 +135,16 @@ export function clamp01(v) {
 /**
  * Normalize a 2D vector.
  *
- * Returns null when the vector length is invalid or zero.
+ * Args:
+ *   dx: Vector x-component.
+ *   dy: Vector y-component.
+ *
+ * Returns:
+ *   Object { x, y } with unit length, or null when the vector length is zero
+ *   or invalid.
+ *
+ * Side effects:
+ *   None.
  */
 export function normalizeVector(dx, dy) {
   const len = Math.hypot(dx, dy);
@@ -116,19 +160,31 @@ export function distance(a, b) {
 }
 
 /**
- * Compute the intersections between an infinite line and a circle.
+ * Compute intersections between an infinite line and a circle.
  *
- * line:
- * - point: one point on the line
- * - dir: normalized or non-normalized direction vector
+ * Args:
+ *   point: One point on the line as { x, y }.
+ *   dir: Line direction vector as { x, y }. It may be normalized or
+ *     non-normalized.
+ *   circle: Circle object with cx, cy and r.
  *
- * Returns zero, one, or two intersection points.
+ * Returns:
+ *   Array with zero, one or two intersection points. Each returned point also
+ *   contains parameter t along the line direction.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Important:
+ *   The line is treated as infinite. This function does not restrict
+ *   intersections to a finite segment.
  */
 export function lineCircleIntersections(point, dir, circle) {
   const fx = point.x - circle.cx;
   const fy = point.y - circle.cy;
 
   const a = dir.x * dir.x + dir.y * dir.y;
+  if (a < EPSILON) return [];
   const b = 2 * (fx * dir.x + fy * dir.y);
   const c = fx * fx + fy * fy - circle.r * circle.r;
 
@@ -148,8 +204,19 @@ export function lineCircleIntersections(point, dir, circle) {
 /**
  * Compute the intersection between an infinite line and a finite segment.
  *
- * Returns null when the line and segment are parallel or when the
- * intersection lies outside the segment.
+ * Args:
+ *   linePoint: One point on the infinite line as { x, y }.
+ *   lineDir: Direction vector of the infinite line as { x, y }.
+ *   a: Segment start point as { x, y }.
+ *   b: Segment end point as { x, y }.
+ *
+ * Returns:
+ *   Intersection point with parameter t along the infinite line, or null if the
+ *   line and segment are parallel or if the intersection lies outside the
+ *   segment.
+ *
+ * Side effects:
+ *   None.
  */
 export function lineSegmentIntersection(linePoint, lineDir, a, b) {
   const vx = b.x - a.x;
@@ -176,7 +243,20 @@ export function lineSegmentIntersection(linePoint, lineDir, a, b) {
 /**
  * Compute all intersections between an infinite line and a polygon boundary.
  *
- * Duplicate hits are removed to avoid double-counting polygon vertices.
+ * Args:
+ *   linePoint: One point on the infinite line as { x, y }.
+ *   lineDir: Direction vector of the infinite line as { x, y }.
+ *   verts: Polygon vertices as [[x1, y1], [x2, y2], ...].
+ *
+ * Returns:
+ *   Array of intersection points sorted by their t parameter along the line.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Notes:
+ *   Duplicate hits are removed to avoid double-counting polygon vertices when
+ *   the line passes exactly through a corner.
  */
 export function linePolygonIntersections(linePoint, lineDir, verts) {
   const hits = [];
@@ -220,7 +300,20 @@ export function lineRectIntersections(linePoint, lineDir, rect) {
 /**
  * Compute the geometric width between the first and last intersection point.
  *
- * This is useful for estimating the target width along the movement axis.
+ * Args:
+ *   hits: Sorted line/shape intersection points, usually returned by one of
+ *   the line*Intersections() helpers.
+ *
+ * Returns:
+ *   Distance between the first and last hit, or NaN if fewer than two hits are
+ *   available.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Related usage:
+ *   Used to estimate target width along the movement axis for effective Fitts
+ *   parameter calculations.
  */
 export function intersectionWidthFromHits(hits) {
   if (!hits || hits.length < 2) return NaN;

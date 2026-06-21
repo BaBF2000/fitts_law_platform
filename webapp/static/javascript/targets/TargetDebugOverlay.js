@@ -28,6 +28,22 @@ import {
   getViewportSize,
 } from "../core/helpers.js";
 
+/**
+ * Create an SVG element in the correct XML namespace.
+ *
+ * Args:
+ *   tag: SVG tag name, for example "svg", "line", "circle" or "text".
+ *
+ * Returns:
+ *   Newly created SVGElement.
+ *
+ * Side effects:
+ *   None. The element is created but not inserted into the DOM.
+ *
+ * Purpose:
+ *   SVG elements must be created with createElementNS(), not with
+ *   document.createElement().
+ */
 function createSvgElement(tag) {
   return document.createElementNS(
     "http://www.w3.org/2000/svg",
@@ -35,11 +51,39 @@ function createSvgElement(tag) {
   );
 }
 
+/**
+ * Development overlay for visualizing target geometry.
+ *
+ * Responsibility:
+ * Creates and updates an SVG overlay above the experiment UI. The overlay is
+ * used only for debugging geometry and must not influence target placement,
+ * hit validation or timing measurements.
+ */
 export class TargetDebugOverlay {
+  /**
+   * Create an empty debug overlay controller.
+   *
+   * Side effects:
+   *   None. The SVG element is created lazily by ensureSvg().
+   */
   constructor() {
+    // Lazily created SVG overlay element.
     this.svg = null;
   }
 
+  /**
+   * Ensure that the SVG overlay exists.
+   *
+   * Returns:
+   *   SVG overlay element.
+   *
+   * Side effects:
+   *   May create an SVG element, style it, append it to document.body and update
+   *   its viewport size.
+   *
+   * Behavior:
+   *   If the overlay already exists, only its viewport size is refreshed.
+   */
   ensureSvg() {
     if (this.svg) {
       this.updateViewportSize();
@@ -50,6 +94,8 @@ export class TargetDebugOverlay {
 
     svg.id = "targetDebugOverlay";
 
+    // Fixed fullscreen overlay. pointer-events:none ensures that the debug
+    // visualization never blocks experiment interaction.
     svg.style.cssText = [
       "position:fixed",
       "left:0",
@@ -67,6 +113,19 @@ export class TargetDebugOverlay {
     return svg;
   }
 
+  /**
+   * Synchronize the SVG overlay size with the current viewport.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Updates SVG width, height, viewBox and CSS dimensions.
+   *
+   * Related usage:
+   *   Called before drawing to keep debug coordinates aligned with viewport
+   *   CSS pixel coordinates.
+   */
   updateViewportSize() {
     if (!this.svg) return;
 
@@ -75,6 +134,7 @@ export class TargetDebugOverlay {
       height,
     } = getViewportSize();
 
+    // Use the same coordinate system as the experiment viewport.
     this.svg.setAttribute("width", String(width));
     this.svg.setAttribute("height", String(height));
     this.svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -83,6 +143,15 @@ export class TargetDebugOverlay {
     this.svg.style.height = `${height}px`;
   }
 
+  /**
+   * Remove all debug drawings and hide the overlay.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Clears SVG contents and hides the overlay if it exists.
+   */
   clear() {
     if (!this.svg) return;
 
@@ -90,6 +159,24 @@ export class TargetDebugOverlay {
     this.svg.style.display = "none";
   }
 
+  /**
+   * Draw a line segment on the debug overlay.
+   *
+   * Args:
+   *   x1: Start x-coordinate in CSS pixels.
+   *   y1: Start y-coordinate in CSS pixels.
+   *   x2: End x-coordinate in CSS pixels.
+   *   y2: End y-coordinate in CSS pixels.
+   *   stroke: SVG stroke color.
+   *   width: SVG stroke width in pixels.
+   *   dash: Optional stroke-dasharray string.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Ensures the SVG overlay exists and appends a line element.
+   */
   drawLine({
     x1,
     y1,
@@ -116,6 +203,21 @@ export class TargetDebugOverlay {
     svg.appendChild(line);
   }
 
+  /**
+   * Draw a labeled point on the debug overlay.
+   *
+   * Args:
+   *   x: Point x-coordinate in CSS pixels.
+   *   y: Point y-coordinate in CSS pixels.
+   *   label: Text label shown next to the point.
+   *   fill: Point and label color.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Ensures the SVG overlay exists and appends a circle and text element.
+   */
   drawPoint({
     x,
     y,
@@ -144,6 +246,27 @@ export class TargetDebugOverlay {
     svg.appendChild(text);
   }
 
+  /**
+   * Draw readable debug text on the overlay.
+   *
+   * Args:
+   *   x: Text x-coordinate in CSS pixels.
+   *   y: Text y-coordinate in CSS pixels.
+   *   text: Text content to display.
+   *   fill: Text fill color.
+   *   size: Font size in pixels.
+   *   weight: Font weight.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Ensures the SVG overlay exists and appends a text element.
+   *
+   * Notes:
+   *   A black stroke is used behind the text to keep labels readable on top of
+   *   different target/background colors.
+   */
   drawText({
     x,
     y,
@@ -169,6 +292,26 @@ export class TargetDebugOverlay {
     svg.appendChild(el);
   }
 
+  /**
+   * Draw a circular touch area on the debug overlay.
+   *
+   * Args:
+   *   x: Touch center x-coordinate in CSS pixels.
+   *   y: Touch center y-coordinate in CSS pixels.
+   *   radius: Touch radius in CSS pixels.
+   *   fill: SVG fill color.
+   *   stroke: SVG stroke color.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Ensures the SVG overlay exists and appends a circle element.
+   *
+   * Related usage:
+   *   Used to visualize the circular TouchArea model during validation
+   *   debugging.
+   */
   drawTouchArea({
     x,
     y,
@@ -189,6 +332,22 @@ export class TargetDebugOverlay {
     svg.appendChild(circle);
   }
 
+  /**
+   * Draw the planned movement axis A-B.
+   *
+   * Args:
+   *   a: Start point of the movement axis as { x, y }.
+   *   b: End point of the movement axis as { x, y }.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Draws a dashed line, point labels A/B and the measured amplitude text.
+   *
+   * Behavior:
+   *   If either point is missing, nothing is drawn.
+   */
   drawMovementAxis(a, b) {
     if (!a || !b) return;
 
@@ -227,6 +386,29 @@ export class TargetDebugOverlay {
     });
   }
 
+  /**
+   * Draw a target-width segment on the debug overlay.
+   *
+   * Args:
+   *   c: Start point of the width segment as { x, y }.
+   *   d: End point of the width segment as { x, y }.
+   *   labelStart: Label for the start point.
+   *   labelEnd: Label for the end point.
+   *   text: Prefix used for the width label.
+   *   stroke: Segment line color.
+   *   fill: Point and text color.
+   *   dash: Optional stroke-dasharray string.
+   *   textOffsetY: Vertical offset for the width label.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Draws a line, two labeled points and a width text label.
+   *
+   * Behavior:
+   *   If either endpoint is missing, nothing is drawn.
+   */
   drawWidthSegment({
     c,
     d,
@@ -275,6 +457,21 @@ export class TargetDebugOverlay {
     });
   }
 
+  /**
+   * Draw touch-area debug information.
+   *
+   * Args:
+   *   touchArea: TouchArea instance, or null if no touch should be visualized.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Draws the circular touch area, center point T and touch diameter label.
+   *
+   * Behavior:
+   *   If touchArea is missing, nothing is drawn.
+   */
   drawTouchDebug(touchArea) {
     if (!touchArea) return;
 
@@ -299,6 +496,35 @@ export class TargetDebugOverlay {
     });
   }
 
+  /**
+   * Draw the complete ABCD/EF target geometry debug visualization.
+   *
+   * Args:
+   *   a: Planned movement start point A.
+   *   b: Planned movement end point B.
+   *   c: Planned target-width start point C.
+   *   d: Planned target-width end point D.
+   *   effectiveC: Optional effective-width start point E.
+   *   effectiveD: Optional effective-width end point F.
+   *   touchArea: Optional TouchArea instance to visualize as T.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Creates or updates the SVG overlay, clears previous drawings, shows the
+   *   overlay and appends all requested debug primitives.
+   *
+   * Visual convention:
+   *   - A-B: planned movement axis
+   *   - C-D: planned target width on the movement axis
+   *   - E-F: effective target width on the movement axis
+   *   - T: circular touch area
+   *
+   * Important:
+   *   This function is for debugging only and must not affect runtime
+   *   measurements or validation logic.
+   */
   drawABCD({
     a,
     b,
@@ -310,6 +536,7 @@ export class TargetDebugOverlay {
   }) {
     const svg = this.ensureSvg();
 
+    // Replace previous debug drawings with the current trial geometry.
     svg.innerHTML = "";
     svg.style.display = "block";
 

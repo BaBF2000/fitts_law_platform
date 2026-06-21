@@ -2,13 +2,20 @@
 Data models for the Fitts data framework.
 
 Responsibility:
-Defines typed Python objects representing database entities and computed
-analysis results.
+    Defines typed Python objects representing database entities and computed
+    analysis results.
+
+Organigram reference:
+    Persistence & Backend
+    -> Fitts Data Framework
+       -> Data Models
 
 Important:
-Models keep the framework easier to use than raw dictionaries.
-Database query functions may still return dictionaries, but higher-level
-functions can convert them into these dataclasses.
+    Models make the framework easier to use than raw dictionaries.
+
+    Low-level database query functions may still return dictionaries, but
+    higher-level modules can convert these dictionaries into dataclass objects
+    when a more structured representation is useful.
 """
 
 from __future__ import annotations
@@ -17,21 +24,97 @@ from dataclasses import dataclass
 from typing import Any
 
 
+def _optional_str(value: Any) -> str | None:
+    """
+    Convert a value to string if it is present.
+
+    Args:
+        value:
+            Raw value from a database row.
+
+    Returns:
+        A string representation of the value, or None if the value is missing.
+    """
+    if value is None:
+        return None
+
+    return str(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    """
+    Convert a value to int if possible.
+
+    Args:
+        value:
+            Raw value from a database row.
+
+    Returns:
+        An integer value, or None if conversion is not possible.
+    """
+    if value is None:
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_float(value: Any) -> float | None:
+    """
+    Convert a value to float if possible.
+
+    Args:
+        value:
+            Raw value from a database row.
+
+    Returns:
+        A float value, or None if conversion is not possible.
+    """
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass(frozen=True)
 class Participant:
     """
     One experiment participant.
+
+    Attributes:
+        participant_id:
+            Public participant identifier.
+        session_count:
+            Number of saved sessions for this participant.
+        last_session_at:
+            Timestamp of the most recent saved session.
     """
+
     participant_id: str
     session_count: int | None = None
     last_session_at: str | None = None
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "Participant":
+        """
+        Create a Participant object from a database row.
+
+        Args:
+            row:
+                Dictionary returned by the query layer.
+
+        Returns:
+            A Participant instance.
+        """
         return cls(
             participant_id=str(row.get("participant_id")),
-            session_count=row.get("session_count"),
-            last_session_at=row.get("last_session_at"),
+            session_count=_optional_int(row.get("session_count")),
+            last_session_at=_optional_str(row.get("last_session_at")),
         )
 
 
@@ -39,7 +122,12 @@ class Participant:
 class Session:
     """
     One saved experiment session.
+
+    The session model contains both identifying information and contextual
+    information such as protocol metadata, unit settings, calibration and
+    viewport data.
     """
+
     id: int
     participant_id: str
     session_code: str
@@ -64,28 +152,38 @@ class Session:
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "Session":
+        """
+        Create a Session object from a database row.
+
+        Args:
+            row:
+                Dictionary returned by the query layer.
+
+        Returns:
+            A Session instance.
+        """
         return cls(
             id=int(row["id"]),
             participant_id=str(row["participant_id"]),
             session_code=str(row["session_code"]),
             started_at=str(row["started_at"]),
 
-            protocol_name=row.get("protocol_name"),
-            protocol_comment=row.get("protocol_comment"),
-            protocol_json=row.get("protocol_json"),
+            protocol_name=_optional_str(row.get("protocol_name")),
+            protocol_comment=_optional_str(row.get("protocol_comment")),
+            protocol_json=_optional_str(row.get("protocol_json")),
 
-            unit=row.get("unit"),
-            formula=row.get("formula"),
-            target_shape=row.get("target_shape"),
-            param_mode=row.get("param_mode"),
+            unit=_optional_str(row.get("unit")),
+            formula=_optional_str(row.get("formula")),
+            target_shape=_optional_str(row.get("target_shape")),
+            param_mode=_optional_str(row.get("param_mode")),
 
-            trial_count=row.get("trial_count"),
-            interactions_per_trial=row.get("interactions_per_trial"),
+            trial_count=_optional_int(row.get("trial_count")),
+            interactions_per_trial=_optional_int(row.get("interactions_per_trial")),
 
-            mm_per_px=row.get("mm_per_px"),
-            viewport_w=row.get("viewport_w"),
-            viewport_h=row.get("viewport_h"),
-            dpr=row.get("dpr"),
+            mm_per_px=_optional_float(row.get("mm_per_px")),
+            viewport_w=_optional_int(row.get("viewport_w")),
+            viewport_h=_optional_int(row.get("viewport_h")),
+            dpr=_optional_float(row.get("dpr")),
         )
 
 
@@ -93,7 +191,14 @@ class Session:
 class TrialRow:
     """
     One trial or interaction row.
+
+    A row can represent either:
+    - a trial summary row, or
+    - an interaction-level row belonging to a trial.
+
+    The distinction is stored in the trial_summary field.
     """
+
     id: int | None
     session_id: int
     trial_no: int | None
@@ -126,36 +231,46 @@ class TrialRow:
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "TrialRow":
+        """
+        Create a TrialRow object from a database row.
+
+        Args:
+            row:
+                Dictionary returned by the query layer.
+
+        Returns:
+            A TrialRow instance.
+        """
         return cls(
-            id=row.get("id"),
+            id=_optional_int(row.get("id")),
             session_id=int(row["session_id"]),
-            trial_no=row.get("trial_no"),
+            trial_no=_optional_int(row.get("trial_no")),
 
-            interaction_no=row.get("interaction_no"),
-            trial_summary=row.get("trial_summary"),
-            hit_valid=row.get("hit_valid"),
+            interaction_no=_optional_int(row.get("interaction_no")),
+            trial_summary=_optional_int(row.get("trial_summary")),
+            hit_valid=_optional_int(row.get("hit_valid")),
 
-            mt_ms=row.get("mt_ms"),
-            errors=row.get("errors"),
+            mt_ms=_optional_float(row.get("mt_ms")),
+            errors=_optional_int(row.get("errors")),
 
-            A_px_planned=row.get("A_px_planned"),
-            A_mm_planned=row.get("A_mm_planned"),
+            A_px_planned=_optional_float(row.get("A_px_planned")),
+            A_mm_planned=_optional_float(row.get("A_mm_planned")),
 
-            W_axis_planned_px=row.get("W_axis_planned_px"),
-            W_axis_planned_mm=row.get("W_axis_planned_mm"),
+            W_axis_planned_px=_optional_float(row.get("W_axis_planned_px")),
+            W_axis_planned_mm=_optional_float(row.get("W_axis_planned_mm")),
 
-            D_px_effective=row.get("D_px_effective"),
-            D_mm_effective=row.get("D_mm_effective"),
+            D_px_effective=_optional_float(row.get("D_px_effective")),
+            D_mm_effective=_optional_float(row.get("D_mm_effective")),
 
-            W_axis_effective_px=row.get("W_axis_effective_px"),
-            W_axis_effective_mm=row.get("W_axis_effective_mm"),
+            W_axis_effective_px=_optional_float(row.get("W_axis_effective_px")),
+            W_axis_effective_mm=_optional_float(row.get("W_axis_effective_mm")),
 
-            ID_planned=row.get("ID_planned"),
-            ID_effective=row.get("ID_effective"),
+            ID_planned=_optional_float(row.get("ID_planned")),
+            ID_effective=_optional_float(row.get("ID_effective")),
 
-            shape=row.get("shape"),
-            target_shape=row.get("target_shape"),
-            param_mode=row.get("param_mode"),
+            shape=_optional_str(row.get("shape")),
+            target_shape=_optional_str(row.get("target_shape")),
+            param_mode=_optional_str(row.get("param_mode")),
         )
 
 
@@ -163,7 +278,11 @@ class TrialRow:
 class SessionSummary:
     """
     Computed summary for one session.
+
+    This model stores aggregated metrics that are useful for a compact
+    scientific overview of one experimental session.
     """
+
     participant: str | None
     session: str | None
     session_id: int | None
@@ -179,7 +298,10 @@ class SessionSummary:
 
     def as_dict(self) -> dict[str, Any]:
         """
-        Convert the summary to a JSON-friendly dictionary.
+        Convert the session summary to a JSON-friendly dictionary.
+
+        Returns:
+            Dictionary representation of the session summary.
         """
         return {
             "participant": self.participant,
@@ -202,9 +324,9 @@ class ParticipantSummary:
     Summary of all sessions belonging to one participant.
 
     Important:
-    This summary intentionally does not compute global averages across
-    sessions because sessions may use different protocols, devices or
-    calibration states.
+        This summary intentionally does not compute global averages across
+        sessions because sessions may use different protocols, devices,
+        calibration states or experimental conditions.
     """
 
     participant: str
@@ -212,6 +334,12 @@ class ParticipantSummary:
     sessions: list[SessionSummary]
 
     def as_dict(self) -> dict[str, Any]:
+        """
+        Convert the participant summary to a JSON-friendly dictionary.
+
+        Returns:
+            Dictionary representation of the participant summary.
+        """
         return {
             "participant": self.participant,
             "session_count": self.session_count,

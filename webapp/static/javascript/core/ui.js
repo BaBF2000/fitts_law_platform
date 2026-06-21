@@ -30,25 +30,36 @@
 
 import { setFullscreenEnforcement, setWakeLock } from "./helpers.js";
 
+// Calibration uncertainty threshold in percent.
+// Values above this threshold show a warning badge instead of a normal OK badge.
 const CALIBRATION_WARN_THRESHOLD_PCT = 2.0;
 
 /**
- * Switch between top-level views.
+ * Switch between top-level application views.
  *
- * Views:
- *  - "start": setup screen
- *  - "cal": calibration screen
- *  - "touchability": finger/touchability test
- *  - "run": experiment running
- *  - "end": end/summary screen
+ * Args:
+ *   dom: Centralized DOM reference object from getDom().
+ *   which: View identifier. Supported values are:
+ *     - "start": setup screen
+ *     - "cal": calibration screen
+ *     - "touchability": finger/touchability test
+ *     - "adminSettings": advanced experiment constraints
+ *     - "run": experiment running
+ *     - "end": end/summary screen
+ *
+ * Returns:
+ *   undefined.
+ *
+ * Side effects:
+ *   Updates panel display styles, fullscreen enforcement and wake-lock state.
  *
  * Fullscreen / wake-lock policy:
- *  - Enforce fullscreen + keep screen awake only while the experiment is running
- *    (end screen included so participants can safely export/save without dimming).
- *  - Do not enforce on start or calibration screens.
- *  - "adminSettings": advanced experiment constraints
+ *   Fullscreen enforcement and wake lock are active only during "run" and
+ *   "end". The end screen remains protected so participants can save/export
+ *   results without the display dimming.
  *
- * Note: UI text is German by design; do not translate user-facing strings here.
+ * Important:
+ *   UI text is German by design; do not translate user-facing strings here.
  */
 export function show(dom, which) {
   if (!dom) return;
@@ -82,11 +93,24 @@ export function show(dom, which) {
 }
 
 /**
- * Update HUD readouts and start-card dimension info.
+ * Update viewport, calibration and display-size readouts.
  *
- * - HUD right: viewport px + optional calibration factor (mm/px) and uncertainty
- * - Start card: fullscreen dimensions in cm if calibrated
- * - Calibration badge: delegated to updateCalibrationStatus()
+ * Args:
+ *   dom: Centralized DOM reference object from getDom().
+ *   state: Shared application state containing calibration values such as
+ *     mmPerPx and calErrorPct.
+ *
+ * Returns:
+ *   undefined.
+ *
+ * Side effects:
+ *   Updates HUD text, fullscreen dimension text and calibration status badge.
+ *
+ * Behavior:
+ *   - HUD right shows viewport size in CSS pixels.
+ *   - If calibration exists, HUD right also shows mm/px and optional error.
+ *   - Start card shows estimated fullscreen dimensions in centimeters.
+ *   - Calibration badge is updated through updateCalibrationStatus().
  */
 export function updateHudSize(dom, state) {
   if (!dom || !state) return;
@@ -124,7 +148,7 @@ export function updateHudSize(dom, state) {
   }
 
   // --- Keep status badge in sync (if present) ---
-  updateCalibrationStatus(state);
+  updateCalibrationStatus(dom, state);
 }
 
 /**
@@ -137,12 +161,12 @@ export function updateHudSize(dom, state) {
  *  - Calibrated => OK or WARN depending on calErrorPct threshold
  *  - Meta line shows mm/px and optional ±% uncertainty
  */
-export function updateCalibrationStatus(state) {
-  const box = document.getElementById("calStatus");
-  const dot = document.getElementById("calDot");
-  const txt = document.getElementById("calStatusText");
-  const meta = document.getElementById("calStatusMeta");
-  const resetBtn = document.getElementById("btnClearCalibration");
+export function updateCalibrationStatus(dom, state) {
+  const box = dom?.calStatus;
+  const dot = dom?.calDot;
+  const txt = dom?.calStatusText;
+  const meta = dom?.calStatusMeta;
+  const resetBtn = dom?.btnClearCalibration;
 
   const calibrated = !!state?.mmPerPx;
 

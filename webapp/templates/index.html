@@ -16,17 +16,47 @@
   </head>
 
   <body>
+    <!--
+      Main frontend template for Fitts Display Lab.
+    
+      This file defines the static HTML structure of the single-page experiment UI
+      Most panels are shown or hidden by JavaScript modules loaded through main.js
+      Element IDs are part of the frontend module interface and should be changed
+      only together with the corresponding JavaScript selectors
+    -->
+    
+    <!--
+      Root container for the application UI.
+      All visible experiment panels, overlays and runtime states are rendered inside
+      this element.
+    -->
     <div id="application">
 
-      <!-- HUD -->
+      <!--
+        Runtime HUD.
+        hudLeft shows the current application/experiment state.
+        hudRight shows viewport or device-related information.
+        Updated by frontend UI and runtime modules.
+      -->
       <div id="hud">
         <div class="pill" id="hudLeft">Bereit</div>
         <div class="pill" id="hudRight">W×H: —</div>
       </div>
 
+      <!--
+        Optional visual crosshair used during calibration/debugging.
+        Hidden by default and controlled by frontend modules.
+      -->
       <div id="crosshair" style="display: none"></div>
 
       <!-- START SCREEN -->
+      <!--
+        Start/setup screen.
+        Contains participant/session identifiers, calibration access, touchability
+        measurement, protocol loading, experiment design controls and the final start
+        button.
+      -->
+
       <div id="startCard" class="setupPanel">
         <div class="card">
           <div class="cardScroll">
@@ -37,7 +67,11 @@
                 <h1>Fitts Display Lab</h1>
                 <div class="titleUnderline"></div>
               </div>
-
+              
+              <!--
+                Calibration status indicator.
+                Updated after calibration loading, validation or reset.
+              -->
               <div class="calStatus" id="calStatus">
                 <span class="dot" id="calDot"></span>
                 <span id="calStatusText">Nicht kalibriert</span>
@@ -75,11 +109,21 @@
               </button>
             </div>
 
+            <!--
+              Optional session comment.
+              The box is hidden by default and toggled by commentHandlers.js.
+              The entered comment is stored with the session metadata.
+            -->
             <div id="sessionCommentBox" style="display:none">
               <textarea id="sessionComment" rows="3"></textarea>
             </div>
 
             <!-- IDS -->
+            <!--
+              Participant and session identifiers.
+              These values are checked by the backend /check_ids endpoint before saving
+              to avoid accidental duplicate participant/session combinations.
+            -->
             <div class="row">
               <div>
                 <label>Teilnehmer ID</label>
@@ -93,6 +137,11 @@
             </div>
 
             <!-- TOUCHABILITY -->
+            <!--
+              Touchability entry point.
+              Opens the finger measurement workflow and displays the current touch diameter
+              used for target-size constraints and Monte Carlo checks
+            -->
             <div class="rowSpaceBetween subjectTools">
               <button id="buttonTouchability">Touchability-Test</button>
 
@@ -104,6 +153,11 @@
             <hr class="sep" />
 
             <!-- EXPERIMENT DESIGN -->
+            <!--
+              Experiment design section
+              Allows creating, loading, checking and saving reusable protocol templates
+              The detailed block editor is shown in the session configuration panel
+            -->
             <section class="designSection">
 
               <div class="rowSpaceBetween">
@@ -119,8 +173,19 @@
               <!-- EDITOR (hidden) -->
               <div id="experimentDesignEditor" style="display:none">
                  
+                <!--
+                  Monte Carlo summary placeholder
+                  Filled by frontend Monte Carlo modules after a technical feasibility check
+                  of the current protocol
+                -->
                 <div id="monteCarloSummary" class="monteCarloSummary" style="display:none"></div>
+                
                 <!-- PROTOCOL METADATA -->
+                <!--
+                  Protocol metadata
+                  Stored with reusable protocol templates and copied into session snapshots
+                  when an experiment run is saved
+                -->
                 <div class="formGrid twoCols">
                   <div class="field">
                     <label>Protokollname</label>
@@ -151,6 +216,11 @@
                   <div class="field">
                     <label>A-Verteilung</label>
                     <select id="aSampling">
+                      <!--
+                        Parameter sampling modes
+                        These values define how A, W and ID are sampled during protocol generation
+                        and Monte Carlo pre-evaluation
+                      -->
                       <option value="uniform" selected>Uniform</option>
                       <option value="truncated_uniform">Uniform (trunkiert)</option>
                       <option value="normal">Normal</option>
@@ -199,7 +269,7 @@
                   </div>
 
                 </div>
-
+                
                 <div class="row">
                   <button id="buttonSessionConfig">Blöcke designen</button>
                   <button id="btnMonteCarlo" type="button">Monte Carlo Analyse</button>
@@ -219,7 +289,7 @@
             <!-- START -->
             <div class="row finalStartRow">
               <button id="buttonStart" class="primaryStartBtn">Experiment starten</button>
-              <button id="hudDebugBtn">🐞 Debug</button>
+              <button id="hudDebugBtn">Debug</button>
             </div>
 
           </div>
@@ -233,9 +303,23 @@
             <h1>Kalibrierung</h1>
 
             <div class="row center">
-              <div id="calibrationRectangle">
-                <div id="handle"></div>
-              </div>
+              <div id="calibrationRectangle"></div>
+            </div>
+            <div class="calibration-scale-control">
+              <span class="calibration-scale-label">kleiner</span>
+            
+              <input
+                id="calScaleRange"
+                class="calibration-scale-range"
+                type="range"
+                min="120"
+                max="1600"
+                step="1"
+                value="340"
+                aria-label="Kalibrierungsrechteck skalieren"
+              />
+            
+              <span class="calibration-scale-label">größer</span>
             </div>
 
             <div class="row">
@@ -283,6 +367,12 @@
       </div>
 
       <!-- SESSION CONFIG -->
+
+      <!--
+        Session/block design panel.
+        Used to create and edit protocol blocks. Each block defines target shape,
+        parameter mode, value ranges and overlap requirements.
+      -->
       <div class="panel" id="sessionConfigPanel" style="display:none">
         <div class="card sessionCard">
           <div class="sessionHeader">
@@ -308,6 +398,12 @@
       </div>
 
       <!-- ADMIN SETTINGS -->
+
+      <!--
+        Advanced technical settings.
+        These values adjust internal target-size and placement constraints.
+        They are intended for experiment design/debug use, not for participants.
+      -->
       <div class="panel" id="adminSettingsPanel" style="display:none">
         <div class="card">
           <div class="cardScroll">
@@ -354,6 +450,12 @@
       </div>
 
       <!-- END -->
+
+      <!--
+        End/result panel.
+        Shown after an experiment run. Provides summary KPIs and options to save
+        results to the backend, download CSV locally or restart the application.
+      -->
       <div class="panel" id="endPanel" style="display:none">
         <div class="card">
           <div class="cardScroll">
@@ -377,6 +479,11 @@
 
     </div>
 
+    <!--
+      Service worker registration and update handling.
+      Registers /sw.js for PWA behavior and shows a reload banner when a new
+      service worker version is available.
+    -->
     <script>
       (function () {
         if (!("serviceWorker" in navigator)) return;
@@ -434,12 +541,17 @@
               if (reloadRequested) window.location.reload();
             });
           } catch (err) {
-            // Silent by design
+            // Silent by design: PWA registration failure must not block experiment usage
           }
         });
       })();
     </script>
 
+    <!--
+      Optional PWA debug overlay.
+      Enabled only with ?pwaDebug=1 and used to inspect service worker registration
+      state during development or tablet deployment testing.
+    -->
     <script>
       (function () {
         const params = new URLSearchParams(location.search);
@@ -469,7 +581,14 @@
           .catch((e) => log("err", e?.message || String(e)));
       })();
     </script>
-
+    
+    <!--
+      Main frontend entry point.
+      Loads the JavaScript module graph that wires DOM elements, state management,
+      calibration, touchability, protocol design, Monte Carlo checks and experiment
+      execution.
+    -->
+<script type="module" src="/static/javascript/main.js"></script>
     <script type="module" src="/static/javascript/main.js"></script>
   </body>
 </html>

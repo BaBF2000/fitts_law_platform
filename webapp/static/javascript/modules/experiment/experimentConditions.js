@@ -11,12 +11,36 @@
  *
  * This module does not resolve A/W/ID into pixels.
  * It only expands user-entered parameter lists into trial conditions.
+ *
+ * Related modules:
+ * - experimentTrials.js uses these conditions to build the final trial list.
+ * - core/helpers.js provides parseNumberOrList().
+ * - experimentTrialPreparation.js later resolves the selected values into
+ *   runtime trial parameters.
  */
 
 import {
   parseNumberOrList,
 } from "../../core/helpers.js";
 
+/**
+ * Convert a user-entered parameter specification into an array of values.
+ *
+ * Args:
+ *   input: Raw user input, for example "0.5" or "[0.1, 0.3, 0.5]".
+ *
+ * Returns:
+ *   Array of numeric values.
+ *   Returns an empty array if the input cannot be parsed.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Behavior:
+ *   The actual parsing is delegated to parseNumberOrList(). This helper only
+ *   normalizes invalid inputs to an empty array so condition generation can
+ *   fail safely.
+ */
 export function valuesFromSpec(input) {
   const spec = parseNumberOrList(input);
 
@@ -27,6 +51,26 @@ export function valuesFromSpec(input) {
   return spec.values;
 }
 
+/**
+ * Build the Cartesian product of two value arrays.
+ *
+ * Args:
+ *   a: First value array.
+ *   b: Second value array.
+ *
+ * Returns:
+ *   Array of pairs [x, y] containing every combination of values from a and b.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Example:
+ *   [1, 2] × [10, 20] becomes:
+ *   [[1, 10], [1, 20], [2, 10], [2, 20]]
+ *
+ * Purpose:
+ *   Used to generate balanced parameter combinations for a protocol block.
+ */
 export function cartesianProduct(a, b) {
   const out = [];
 
@@ -39,6 +83,25 @@ export function cartesianProduct(a, b) {
   return out;
 }
 
+/**
+ * Return a shuffled copy of an array.
+ *
+ * Args:
+ *   arr: Input array.
+ *
+ * Returns:
+ *   New array containing the same elements in random order.
+ *
+ * Side effects:
+ *   None. The original array is not modified.
+ *
+ * Algorithm:
+ *   Uses the Fisher-Yates shuffle.
+ *
+ * Important:
+ *   This function is exported so trial generation can randomize condition order
+ *   without mutating the original balanced condition list.
+ */
 export function shuffleArray(arr) {
   const copy = [...arr];
 
@@ -50,6 +113,36 @@ export function shuffleArray(arr) {
   return copy;
 }
 
+/**
+ * Build balanced trial conditions from one protocol block.
+ *
+ * Args:
+ *   block: Protocol block containing param_mode and entered A/W/ID values.
+ *
+ * Returns:
+ *   Array of condition objects. Each condition contains the entered values that
+ *   should be used for one generated trial.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Supported parameter modes:
+ *   - A_W:
+ *       Combines all A values with all W values.
+ *       ID stays unchanged because it is not the controlling input.
+ *
+ *   - ID_W:
+ *       Combines all ID values with all W values.
+ *       A stays unchanged because it will be derived later.
+ *
+ *   - ID_A:
+ *       Combines all ID values with all A values.
+ *       W stays unchanged because it will be derived later.
+ *
+ * Important:
+ *   This function only expands condition combinations. It does not compute
+ *   Fitts' Law values, does not convert units and does not apply constraints.
+ */
 export function buildBalancedConditions(block) {
   const mode = block.param_mode ?? "A_W";
 

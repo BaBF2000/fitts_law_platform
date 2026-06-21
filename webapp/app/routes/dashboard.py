@@ -24,6 +24,11 @@ Extension guide:
 - Move repeated HTML/CSS into templates later.
 - Add filtering and sorting here.
 - Add visual analytics here.
+
+Important:
+Because the dashboard HTML is assembled manually, all dynamic values from the
+database or URL parameters must be passed through html_escape() before being
+inserted into the page.
 """
 
 from __future__ import annotations
@@ -46,13 +51,31 @@ from .helpers import (
 @bp.get("/dashboard")
 def dashboard():
     """
-    Admin dashboard showing all participants.
+    Render the admin participant overview dashboard
+
+    Returns:
+        flask.Response:
+            - HTML page listing all participants if admin access is allowed.
+            - 403 plain-text response if admin authorization fails
+
+    Database access:
+        Reads all participants and aggregates the number of sessions and the
+        latest session timestamp per participant
+
+    Side effects:
+        None. This route only reads from the database
+
+    Related usage:
+        Links to participant-specific dashboard pages and participant CSV exports
     """
     if not require_admin():
         return Response("Forbidden (admin)", status=403, mimetype="text/plain")
 
     with db() as conn:
         cur = conn.cursor()
+
+        # Aggregate sessions per participant so the overview stays lightweight
+        # LEFT JOIN keeps participants visible even if they have no sessions
         cur.execute(
             """
             SELECT
@@ -71,7 +94,9 @@ def dashboard():
         participants = [dict(row) for row in cur.fetchall()]
 
     qs = admin_qs()
-
+    
+    # Build the participant table rows manually
+    # All dynamic values are escaped because this page is assembled without Jinja
     rows_html = []
     for participant in participants:
         pid = participant["participant_id"]
@@ -89,6 +114,8 @@ def dashboard():
             """
         )
 
+    # The dashboard HTML is currently generated inline to keep the backend
+    # self-contained. For larger dashboards, this should be moved into templates
     page = f"""
     <!doctype html>
     <html lang="de">
@@ -157,16 +184,38 @@ def dashboard():
 @bp.get("/dashboard/participant/<participant_id>")
 def dashboard_participant(participant_id: str):
     """
-    Admin dashboard showing all sessions for one participant.
+    Render the admin session overview for one participant
+
+    Args:
+        participant_id (str): Participant identifier from the URL path
+
+    Returns:
+        flask.Response:
+            - HTML page listing all sessions of the participant
+            - 403 plain-text response if admin authorization fails
+
+    Database access:
+        Reads session metadata and aggregates trial-level values such as saved
+        rows, total errors, average movement time and average index of difficulty
+
+    Side effects:
+        None. This route only reads from the database
+
+    Related usage:
+        Links to session detail pages and session-level CSV exports
     """
     if not require_admin():
         return Response("Forbidden (admin)", status=403, mimetype="text/plain")
 
+        # Sanitize the URL value before using it as a database query parameter
     pid = safe_name(participant_id, "P")
     qs = admin_qs()
 
     with db() as conn:
         cur = conn.cursor()
+
+        # Aggregate trial rows per session to provide a compact session overview
+        # ID_effective is preferred when available; otherwise ID_planned is used
         cur.execute(
             """
             SELECT
@@ -224,6 +273,9 @@ def dashboard_participant(participant_id: str):
         mc_warn = session.get("monte_carlo_warning_count")
         mc_clamp = session.get("monte_carlo_worst_clamp_pct")
         mc_diag = session.get("monte_carlo_worst_diagnostic") or "—"
+        
+        # Map stored Monte Carlo diagnostic labels to CSS classes used for
+        # visual severity highlighting in the dashboard
         mc_diag_class = (
           "diag-high" if mc_diag == "strong_distortion"
           else "diag-medium" if mc_diag == "moderate_distortion"
@@ -331,7 +383,26 @@ def dashboard_participant(participant_id: str):
 @bp.get("/dashboard/session/<int:session_id>")
 def dashboard_session(session_id: int):
     """
-    Admin dashboard showing detailed information for one session.
+    Render the admin detail dashboard for one saved session
+
+    Args:
+        session_id (int): Internal database id of the session
+
+    Returns:
+        flask.Response:
+            - HTML page with session KPIs and up to 120 trial/result rows
+            - 403 plain-text response if admin authorization fails
+            - 404 plain-text response if the session does not exist
+
+    Database access:
+        Reads one session with aggregated trial statistics and then loads a
+        limited number of trial rows for inspection
+
+    Side effects:
+        None. This route only reads from the database
+
+    Related usage:
+        Links to session CSV export and participant dashboard navigation
     """
     if not require_admin():
         return Response("Forbidden (admin)", status=403, mimetype="text/plain")
@@ -340,7 +411,9 @@ def dashboard_session(session_id: int):
 
     with db() as conn:
         cur = conn.cursor()
-
+        
+        # Load session metadata together with aggregated trial statistics
+        # This query drives the KPI cards shown at the top of the detail page
         cur.execute(
             """
             SELECT
@@ -388,7 +461,9 @@ def dashboard_session(session_id: int):
             return Response("Session not found", status=404, mimetype="text/plain")
 
         meta = dict(meta)
-
+        
+        # Load a limited trial preview for the detail table
+        # The full dataset remains available through the CSV export route
         cur.execute(
             """
             SELECT
@@ -415,8 +490,21 @@ def dashboard_session(session_id: int):
         )
         trials = [dict(row) for row in cur.fetchall()]
 
-    def fmt(value, nd=1):
-        return "—" if value is None else f"{value:.{nd}f}"
+        def fmt(value, nd=1):
+          """
+          Format numeric dashboard values with a fixed number of decimals
+  
+          Args:
+              value: Numeric value or None
+              nd (int): Number of decimal places
+  
+          Returns:
+              str: Formatted number or an em dash for missing values
+  
+          Side effects:
+              None.
+          """
+          return "—" if value is None else f"{value:.{nd}f}"
 
     pid = meta["participant_id"]
     scode = meta["session_code"]
@@ -432,6 +520,9 @@ def dashboard_session(session_id: int):
     )
 
     rows_html = ""
+    
+    # Build preview rows for the trial table
+    # Values are escaped because the table is assembled as an HTML string
     for trial in trials:
         rows_html += f"""
           <tr>

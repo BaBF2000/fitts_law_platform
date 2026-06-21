@@ -18,6 +18,24 @@ import {
   loadAdminSettings,
 } from "../../core/adminSettings.js";
 
+/**
+ * Create a default session block configuration.
+ *
+ * Returns:
+ *   New block object with default shape, parameter mode, parameter values,
+ *   randomization flags and required overlap.
+ *
+ * Side effects:
+ *   Reads current admin settings to use the active defaultRequiredOverlap value.
+ *
+ * Purpose:
+ *   Used when the user adds a new block or when the editor needs an initial
+ *   block.
+ *
+ * Important:
+ *   The default required overlap is admin-configurable, so new blocks follow
+ *   the current application constraint settings.
+ */
 export function defaultBlock() {
   const admin = loadAdminSettings();
 
@@ -38,6 +56,33 @@ export function defaultBlock() {
   };
 }
 
+/**
+ * Read one session block from the DOM.
+ *
+ * Args:
+ *   index: Zero-based block index used in DOM element IDs.
+ *
+ * Returns:
+ *   Block object containing shape, parameter mode, entered A/W/ID values,
+ *   randomization flags and required overlap.
+ *
+ * Side effects:
+ *   Reads current values from DOM elements.
+ *
+ * Behavior:
+ *   Missing DOM elements fall back to safe defaults or empty strings.
+ *
+ * Related DOM IDs:
+ *   - blk_<index>_shape
+ *   - blk_<index>_param_mode
+ *   - blk_<index>_dist
+ *   - blk_<index>_width
+ *   - blk_<index>_id
+ *   - blk_<index>_random_A
+ *   - blk_<index>_random_W
+ *   - blk_<index>_random_ID
+ *   - blk_<index>_required_overlap
+ */
 export function readBlockFromDOM(index) {
   return {
     shape:
@@ -60,6 +105,8 @@ export function readBlockFromDOM(index) {
       document.getElementById(`blk_${index}_id`)?.value ??
       "",
 
+    // Random buttons store their active state in data-active instead of using a
+    // native checkbox checked state.
     random_A:
       document.getElementById(`blk_${index}_random_A`)?.dataset.active === "1",
 
@@ -75,6 +122,23 @@ export function readBlockFromDOM(index) {
   };
 }
 
+/**
+ * Check whether an input string represents a list.
+ *
+ * Args:
+ *   value: Raw input value.
+ *
+ * Returns:
+ *   true if the trimmed value starts with "[" and ends with "]", otherwise false.
+ *
+ * Side effects:
+ *   None.
+ *
+ * Purpose:
+ *   List inputs represent discrete value choices. Therefore the random button is
+ *   disabled for list inputs, because the list itself already defines multiple
+ *   possible values.
+ */
 export function isListInput(value) {
   const raw =
     (value ?? "").toString().trim();
@@ -82,6 +146,23 @@ export function isListInput(value) {
   return raw.startsWith("[") && raw.endsWith("]");
 }
 
+/**
+ * Update a randomization button state.
+ *
+ * Args:
+ *   button: Randomization button DOM element.
+ *   enabled: Whether the button should be usable.
+ *   active: Whether randomization should be active when enabled.
+ *
+ * Returns:
+ *   undefined.
+ *
+ * Side effects:
+ *   Updates button.disabled and button.dataset.active.
+ *
+ * Behavior:
+ *   If the button is disabled, data-active is forced to "0".
+ */
 export function setRandomButtonState(
   button,
   enabled,
@@ -94,6 +175,33 @@ export function setRandomButtonState(
     enabled && active ? "1" : "0";
 }
 
+/**
+ * Enable or disable block fields according to the selected parameter mode.
+ *
+ * Args:
+ *   index: Zero-based block index used in DOM element IDs.
+ *
+ * Returns:
+ *   undefined.
+ *
+ * Side effects:
+ *   Updates input disabled states, visual styles and random button states.
+ *
+ * Parameter modes:
+ *   - A_W  enables A and W
+ *   - ID_W enables ID and W
+ *   - ID_A enables ID and A
+ *
+ * Behavior:
+ *   - Inactive fields are disabled and visually dimmed.
+ *   - Random buttons are enabled only when their field is active and the input
+ *     is not a list.
+ *   - Disabled random buttons are forced to inactive state.
+ *
+ * Important:
+ *   This function only controls the editor UI. The final protocol validation is
+ *   still handled later in protocol.js.
+ */
 export function updateBlockFieldState(index) {
   const mode =
     document.getElementById(`blk_${index}_param_mode`)?.value ??
@@ -111,6 +219,7 @@ export function updateBlockFieldState(index) {
     ID: document.getElementById(`blk_${index}_random_ID`),
   };
 
+  // Defines which parameter inputs are editable for each parameter mode.
   const activeByMode = {
     A_W: ["A", "W"],
     ID_W: ["ID", "W"],
@@ -137,6 +246,9 @@ export function updateBlockFieldState(index) {
       input.style.cursor = fieldEnabled ? "" : "not-allowed";
     }
 
+    // A random button is only meaningful for active scalar inputs.
+    // List inputs are already discrete alternatives and therefore do not use the
+    // random toggle.
     const randomEnabled =
       fieldEnabled && !hasList;
 

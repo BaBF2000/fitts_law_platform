@@ -31,7 +31,21 @@ from flask import Response
 
 def csv_clean(value):
     """
-    Convert special numeric/string values into CSV-safe empty cells.
+    Convert special values into CSV-safe cell content
+
+    Args:
+        value: Raw database value read from a SQLite row
+
+    Returns:
+        The original value, or an empty string for None, NaN and infinity-like
+        values
+
+    Side effects:
+        None
+
+    Notes:
+        Empty strings are used instead of invalid numeric values to make the CSV
+        easier to open in spreadsheet software and easier to process later
     """
     if value is None:
         return ""
@@ -47,12 +61,34 @@ def rows_to_csv_response(
     filename: str,
 ) -> Response:
     """
-    Convert sqlite3 rows into a downloadable CSV response.
+    Convert SQLite result rows into a downloadable CSV response
+
+    Args:
+        rows (Sequence[sqlite3.Row]): Query result rows. The first row defines
+            the CSV header through its column names
+        filename (str): Filename used in the Content-Disposition header
+
+    Returns:
+        flask.Response: HTTP response containing CSV text data
+
+    Side effects:
+        Creates an in-memory CSV representation using StringIO
+
+    Behavior:
+        If rows is empty, an empty CSV response is returned without a header
+
+    Related modules:
+        Used by export routes to provide downloadable experiment data
+        The row structure is usually produced by queries based on CSV_SELECT
     """
+
+    # Use an in-memory text buffer because the CSV is returned directly as an
+    # HTTP response and does not need to be written to disk.
     output = StringIO()
     writer = csv.writer(output, lineterminator="\n")
 
     if rows:
+        # The first SQLite row defines the exported column order
         header = list(rows[0].keys())
         writer.writerow(header)
 
@@ -72,11 +108,23 @@ def rows_to_csv_response(
         },
     )
 
-
+# Shared export query used by CSV export endpoints
+#
+# The query is intentionally centralized to keep a stable column order across
+# all exports. It joins participants, sessions and trial rows so each exported
+# row contains participant metadata, session configuration and recorded trial
+# data in one flat CSV structure
+#
+# Keep this SELECT synchronized with:
+# - app.database.schema.create_session_table()
+# - app.database.schema.create_trial_table()
+# - result insertion logic in the backend routes
 CSV_SELECT = """
   SELECT
+    -- Participant metadata
     p.participant_id,
-
+    
+    -- Session metadata and protocol snapshot
     s.session_code,
     s.started_at,
     s.is_demo,
@@ -84,7 +132,8 @@ CSV_SELECT = """
     s.protocol_name,
     s.protocol_comment,
     s.protocol_json,
-
+    
+    -- Monte Carlo pre-check summary stored with the session
     s.monte_carlo_summary_json,
     s.monte_carlo_warning_count,
     s.monte_carlo_worst_clamp_pct,
@@ -114,7 +163,8 @@ CSV_SELECT = """
     s.dpr,
     s.user_agent,
     s.device_context_json,
-
+    
+    -- Trial identifiers and row type
     t.trial_no,
     t.timestamp_iso,
     t.interaction_no,
@@ -138,7 +188,8 @@ CSV_SELECT = """
     t.target_height_px,
 
     t.target_hit_geom_json,
-
+    
+    -- Planned and effective Fitts parameters
     t.A_in,
     t.W_in,
     t.ID_in,
@@ -167,7 +218,8 @@ CSV_SELECT = """
     t.measured_overlap,
     t.required_overlap,
     t.hit_valid,
-
+    
+    -- Touch interaction and device metadata
     t.touch_x,
     t.touch_y,
     t.touch_diameter_px,
