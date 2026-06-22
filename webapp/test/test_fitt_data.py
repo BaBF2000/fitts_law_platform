@@ -13,10 +13,22 @@ Run from the project root:
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from pprint import pprint
 from typing import Any, Callable
 
+import json
+from datetime import datetime
+
 import matplotlib.pyplot as plt
+
+from notebook_participant_session_report import save_notebook_artifact
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 
 from fitts_data import FittsDataClient
 
@@ -26,11 +38,19 @@ from fitts_data import FittsDataClient
 # ---------------------------------------------------------------------
 
 PARTICIPANT = "P01"
-SESSION = "S3"
+SESSION = "S1"
 
-SHOW_PLOTS = True
+SHOW_PLOTS = False
 SAVE_PLOTS = True
-PLOT_DIR = Path("test_outputs")
+
+TEST_DIR = Path(__file__).resolve().parent
+
+OUTPUT_DIR = TEST_DIR / "test_outputs"
+PLOT_DIR = OUTPUT_DIR / "plots"
+REPORT_DIR = OUTPUT_DIR / "reports"
+DIAGNOSTIC_DIR = OUTPUT_DIR / "diagnostics"
+LOG_DIR = OUTPUT_DIR / "logs"
+NOTEBOOK_DIR = OUTPUT_DIR / "notebooks"
 
 
 # ---------------------------------------------------------------------
@@ -92,7 +112,13 @@ def save_or_show_plot(
     if SAVE_PLOTS:
         PLOT_DIR.mkdir(parents=True, exist_ok=True)
         output_path = PLOT_DIR / filename
-        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+        fig.savefig(
+            output_path,
+            dpi=150,
+            bbox_inches="tight",
+        )
+
         print(f"Saved plot: {output_path}")
 
     if SHOW_PLOTS:
@@ -100,6 +126,72 @@ def save_or_show_plot(
     else:
         plt.close(fig)
 
+def save_text_artifact(
+    content: str,
+    filename: str,
+) -> Path:
+    """
+    Save a text artifact produced by the manual test.
+    """
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+    output_path = REPORT_DIR / filename
+
+    output_path.write_text(
+        content,
+        encoding="utf-8",
+    )
+
+    print(f"Saved report: {output_path}")
+
+    return output_path
+
+
+def save_json_artifact(
+    data: Any,
+    filename: str,
+) -> Path:
+    """
+    Save a JSON artifact produced by the manual test.
+    """
+    DIAGNOSTIC_DIR.mkdir(parents=True, exist_ok=True)
+
+    output_path = DIAGNOSTIC_DIR / filename
+
+    output_path.write_text(
+        json.dumps(
+            data,
+            indent=2,
+            ensure_ascii=False,
+            default=str,
+        ),
+        encoding="utf-8",
+    )
+
+    print(f"Saved diagnostics: {output_path}")
+
+    return output_path
+
+
+def save_log_artifact(
+    content: str,
+    filename: str,
+) -> Path:
+    """
+    Save a log artifact produced by the manual test.
+    """
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    output_path = LOG_DIR / filename
+
+    output_path.write_text(
+        content,
+        encoding="utf-8",
+    )
+
+    print(f"Saved log: {output_path}")
+
+    return output_path
 
 # ---------------------------------------------------------------------
 # Main test routine
@@ -615,22 +707,49 @@ def main() -> None:
         participant=PARTICIPANT,
         session=SESSION,
     )
-
+    
     if diagnostics is not None:
         print("\nDiagnostic keys:")
         pprint(list(diagnostics.keys()))
-
+    
+        save_json_artifact(
+            diagnostics,
+            f"{PARTICIPANT}_{SESSION}_diagnostics.json",
+        )
+    
     report = safe_call(
         "session_report()",
         fd.session_report,
         participant=PARTICIPANT,
         session=SESSION,
     )
-
+    
     if report is not None:
         print("\nFormatted session report:")
         print(report)
-
+    
+        generated_at = datetime.now().isoformat(timespec="seconds")
+    
+        markdown_report = (
+            "# Session Report\n\n"
+            f"- Participant: `{PARTICIPANT}`\n"
+            f"- Session: `{SESSION}`\n"
+            f"- Generated at: `{generated_at}`\n\n"
+            "```text\n"
+            f"{report}\n"
+            "```\n"
+        )
+    
+        save_text_artifact(
+            markdown_report,
+            f"{PARTICIPANT}_{SESSION}_session_report.md",
+        )
+    
+        save_text_artifact(
+            report,
+            f"{PARTICIPANT}_{SESSION}_session_report.txt",
+        )
+    
     section("12. Plots")
 
     plot_calls = [
@@ -770,6 +889,30 @@ def main() -> None:
             print("[OK] plot_mt_boxplot_by_ID()")
             save_or_show_plot(fig, "12_mt_boxplot_by_id_direct.png")
 
+        
+        # save_notebook_artifact(
+        #     participant=PARTICIPANT,
+        #     session=SESSION,
+        #     notebook_dir=NOTEBOOK_DIR,
+        #     report_dir=REPORT_DIR,
+        #     diagnostic_dir=DIAGNOSTIC_DIR,
+        #     plot_dir=PLOT_DIR,
+        #     filename=f"{PARTICIPANT}_{SESSION}_test_report.ipynb",
+        #     report_filename=f"{PARTICIPANT}_{SESSION}_session_report.md",
+        #     diagnostics_filename=f"{PARTICIPANT}_{SESSION}_diagnostics.json",
+        # )
+        
+        save_log_artifact(
+        (
+            "Manual fitts_data framework test completed.\n"
+            f"Participant: {PARTICIPANT}\n"
+            f"Session: {SESSION}\n"
+            f"Generated at: {datetime.now().isoformat(timespec='seconds')}\n"
+            f"Output directory: {OUTPUT_DIR}\n"
+        ),
+        f"{PARTICIPANT}_{SESSION}_test_log.txt",
+    )
+    
     section("Test completed")
 
 

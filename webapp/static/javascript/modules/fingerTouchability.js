@@ -136,6 +136,28 @@ function clampTouchDiameterPx(value) {
 }
 
 /**
+ * Prevent default browser behavior only when the event is cancelable.
+ *
+ * Args:
+ *   e: Event object.
+ *
+ * Returns:
+ *   undefined.
+ *
+ * Side effects:
+ *   May call preventDefault().
+ *
+ * Purpose:
+ *   Avoids console warnings and prevents touch handling from blocking page
+ *   scrolling after the measurement panel has been closed.
+ */
+function preventDefaultIfCancelable(e) {
+  if (e?.cancelable) {
+    e.preventDefault();
+  }
+}
+
+/**
  * Read the touch contact diameter from a pointer event.
  *
  * Args:
@@ -245,14 +267,6 @@ function updateTouchCircle(dom, diameterPx, measured) {
  *
  * Side effects:
  *   Updates touchability UI labels and the visual measurement circle.
- *
- * Displayed values:
- *   - measured/fallback touch diameter in px
- *   - measured/fallback touch diameter in mm when calibration exists
- *   - shape-specific Wmin examples for circle, square and polygon
- *
- * Important:
- *   UI placeholders and units are intentionally user-facing.
  */
 function updateTouchabilityUI(dom, state) {
   const diameterPx = state.touchDiameterPx;
@@ -308,17 +322,6 @@ function updateTouchabilityUI(dom, state) {
  *
  * Side effects:
  *   Updates touchability fields in state and refreshes the touchability UI.
- *
- * Updated state fields:
- *   - touchDiameterPx
- *   - touchDiameterMm
- *   - touchabilityByShape
- *   - touchabilityMeasured
- *   - touchabilitySource
- *
- * Important:
- *   This function is the central place where the measured finger contact model
- *   is translated into protocol constraints.
  */
 function applyTouchDiameterPx(dom, state, diameterPx, measured = true) {
   const safePx = clampTouchDiameterPx(diameterPx);
@@ -344,10 +347,6 @@ function applyTouchDiameterPx(dom, state, diameterPx, measured = true) {
  *
  * Side effects:
  *   Applies a fallback touch diameter and updates state/UI.
- *
- * Behavior:
- *   If screen calibration is available, the fallback is defined in millimeters
- *   and converted to pixels. Otherwise, a fixed pixel fallback is used.
  */
 function applyFallback(dom, state) {
   let diameterPx = null;
@@ -373,6 +372,7 @@ function applyFallback(dom, state) {
  * Returns:
  *   Object containing:
  *   - open()
+ *   - close()
  *   - applyFallback()
  *   - applyTouchDiameterPx()
  *   - updateUI()
@@ -380,10 +380,6 @@ function applyFallback(dom, state) {
  * Side effects:
  *   Registers pointer event listeners on dom.fingerMeasureTarget and initializes
  *   the touchability UI.
- *
- * Responsibility:
- *   Measures or estimates the participant's finger contact diameter and derives
- *   shape-specific minimum target sizes for later protocol validation.
  */
 export function initFingerTouchability(dom, state) {
   // Currently measured pointer. null means no active measurement is running.
@@ -397,6 +393,58 @@ export function initFingerTouchability(dom, state) {
   let touchStartTime = null;
 
   /**
+   * Release pointer capture if the measurement target currently owns it.
+   *
+   * Args:
+   *   pointerId: Pointer ID to release. Defaults to activePointerId.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   May release pointer capture on the measurement element.
+   *
+   * Reason:
+   *   If pointer capture remains active after leaving the touchability panel,
+   *   scrolling on the main screen can be blocked on tablets.
+   */
+  function releasePointerCaptureIfNeeded(pointerId = activePointerId) {
+    const el = dom.fingerMeasureTarget;
+
+    if (!el || pointerId === null || pointerId === undefined) {
+      return;
+    }
+
+    try {
+      if (!el.hasPointerCapture || el.hasPointerCapture(pointerId)) {
+        el.releasePointerCapture?.(pointerId);
+      }
+    } catch (_) {
+      // The browser may already have released the pointer capture.
+    }
+  }
+
+  /**
+   * Clear active pointer measurement state.
+   *
+   * Args:
+   *   pointerId: Optional pointer ID whose capture should be released.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Releases pointer capture and resets local measurement state.
+   */
+  function resetPointerMeasurement(pointerId = activePointerId) {
+    releasePointerCaptureIfNeeded(pointerId);
+
+    activePointerId = null;
+    maxMeasuredDiameterPx = 0;
+    touchStartTime = null;
+  }
+
+  /**
    * Begin measuring one pointer contact.
    *
    * Args:
@@ -408,17 +456,22 @@ export function initFingerTouchability(dom, state) {
    * Side effects:
    *   Stores active pointer ID, captures the pointer, initializes the measured
    *   diameter and updates state/UI.
-   *
-   * Behavior:
-   *   If the browser reports a meaningful pointer diameter, it is used.
-   *   Otherwise, the pixel fallback is shown until a better measurement appears.
    */
   function handlePointerDown(e) {
+    // Clear a stale measurement before starting a new one.
+    if (activePointerId !== null && activePointerId !== e.pointerId) {
+      resetPointerMeasurement(activePointerId);
+    }
+
     touchStartTime = performance.now();
     activePointerId = e.pointerId;
     maxMeasuredDiameterPx = readPointerDiameter(e);
 
-    dom.fingerMeasureTarget?.setPointerCapture?.(e.pointerId);
+    try {
+      dom.fingerMeasureTarget?.setPointerCapture?.(e.pointerId);
+    } catch (_) {
+      // Pointer capture is optional. Measurement can continue without it.
+    }
 
     const initialDiameter =
       maxMeasuredDiameterPx > 1
@@ -432,7 +485,7 @@ export function initFingerTouchability(dom, state) {
       maxMeasuredDiameterPx > 1
     );
 
-    e.preventDefault();
+    preventDefaultIfCancelable(e);
   }
 
   /**
@@ -446,10 +499,6 @@ export function initFingerTouchability(dom, state) {
    *
    * Side effects:
    *   May update maxMeasuredDiameterPx, state and UI.
-   *
-   * Behavior:
-   *   Some browsers update e.width/e.height during contact. Others keep it
-   *   fixed at 1, in which case fallback stays active.
    */
   function handlePointerMove(e) {
     if (activePointerId !== e.pointerId) return;
@@ -461,7 +510,7 @@ export function initFingerTouchability(dom, state) {
       applyTouchDiameterPx(dom, state, d, true);
     }
 
-    e.preventDefault();
+    preventDefaultIfCancelable(e);
   }
 
   /**
@@ -474,13 +523,7 @@ export function initFingerTouchability(dom, state) {
    *   undefined.
    *
    * Side effects:
-   *   Applies the final measured/fallback diameter, resets pointer measurement
-   *   state and prevents default browser behavior.
-   *
-   * Behavior:
-   *   The largest measured diameter during the contact is used as the final
-   *   finger contact estimate. If no meaningful browser measurement exists, the
-   *   fallback diameter is used.
+   *   Applies the final measured/fallback diameter and resets pointer state.
    */
   function handlePointerUp(e) {
     if (activePointerId !== e.pointerId) return;
@@ -502,15 +545,15 @@ export function initFingerTouchability(dom, state) {
       measured
     );
 
-    activePointerId = null;
-    maxMeasuredDiameterPx = 0;
-    touchStartTime = null;
-
-    e.preventDefault();
+    resetPointerMeasurement(e.pointerId);
+    preventDefaultIfCancelable(e);
   }
 
   /**
    * Reset pointer state if the browser cancels the touch.
+   *
+   * Args:
+   *   e: PointerEvent from pointercancel.
    *
    * Returns:
    *   undefined.
@@ -518,7 +561,25 @@ export function initFingerTouchability(dom, state) {
    * Side effects:
    *   Clears active measurement state.
    */
-  function handlePointerCancel() {
+  function handlePointerCancel(e) {
+    resetPointerMeasurement(e?.pointerId ?? activePointerId);
+  }
+
+  /**
+   * Clear local state if pointer capture is lost externally.
+   *
+   * Args:
+   *   e: PointerEvent from lostpointercapture.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Clears local pointer state.
+   */
+  function handleLostPointerCapture(e) {
+    if (activePointerId !== e.pointerId) return;
+
     activePointerId = null;
     maxMeasuredDiameterPx = 0;
     touchStartTime = null;
@@ -531,23 +592,66 @@ export function initFingerTouchability(dom, state) {
    *   undefined.
    *
    * Side effects:
-   *   Refreshes labels and the visual touch circle.
+   *   Clears stale pointer state, refreshes labels and the visual touch circle.
    */
   function open() {
+    resetPointerMeasurement();
     updateTouchabilityUI(dom, state);
   }
 
+  /**
+   * Close the touchability workflow.
+   *
+   * Returns:
+   *   undefined.
+   *
+   * Side effects:
+   *   Releases pointer capture and clears local measurement state.
+   *
+   * Purpose:
+   *   Prevents the measurement target from keeping pointer capture after the
+   *   touchability panel is hidden.
+   */
+  function close() {
+    resetPointerMeasurement();
+  }
+
   // Register pointer handlers on the visual measurement target.
-  dom.fingerMeasureTarget?.addEventListener("pointerdown", handlePointerDown);
-  dom.fingerMeasureTarget?.addEventListener("pointermove", handlePointerMove);
-  dom.fingerMeasureTarget?.addEventListener("pointerup", handlePointerUp);
-  dom.fingerMeasureTarget?.addEventListener("pointercancel", handlePointerCancel);
+  dom.fingerMeasureTarget?.addEventListener(
+    "pointerdown",
+    handlePointerDown,
+    { passive: false }
+  );
+
+  dom.fingerMeasureTarget?.addEventListener(
+    "pointermove",
+    handlePointerMove,
+    { passive: false }
+  );
+
+  dom.fingerMeasureTarget?.addEventListener(
+    "pointerup",
+    handlePointerUp,
+    { passive: false }
+  );
+
+  dom.fingerMeasureTarget?.addEventListener(
+    "pointercancel",
+    handlePointerCancel,
+    { passive: false }
+  );
+
+  dom.fingerMeasureTarget?.addEventListener(
+    "lostpointercapture",
+    handleLostPointerCapture
+  );
 
   // Initial UI refresh.
   updateTouchabilityUI(dom, state);
 
   return {
     open,
+    close,
     applyFallback,
 
     // Expose a bound wrapper so external modules do not need to pass dom/state.
@@ -557,3 +661,4 @@ export function initFingerTouchability(dom, state) {
     updateUI: () => updateTouchabilityUI(dom, state),
   };
 }
+

@@ -34,7 +34,8 @@ import {
  *   dom: Centralized DOM reference object from getDom().
  *   state: Shared application state containing touchability and calibration data.
  *   ui: UI helper module, expected to provide show().
- *   touchability: Finger touchability workflow object, expected to provide open().
+ *   touchability: Finger touchability workflow object, expected to provide
+ *     open() and optionally close().
  *
  * Returns:
  *   undefined.
@@ -69,14 +70,19 @@ export function setupTouchabilityHandlers({
   // Use the default touch model when the participant-specific finger
   // measurement is skipped or unavailable.
   dom.btnTouchabilityFallback?.addEventListener("click", () => {
+    touchability.close?.();
+
     applyDefaultTouchability(dom, state);
     saveCurrentTouchability(dom, state, "fallback");
 
-    alert("Standardwert für den Zeigefinger wurde verwendet.");
+    alert("Standardwert wurde verwendet.");
   });
 
   // Leave the touchability panel and return to the setup screen.
   dom.btnTouchabilityBack?.addEventListener("click", () => {
+    touchability.close?.();
+
+    dom.app?.classList.remove("running");
     ui.show(dom, "start");
   });
 }

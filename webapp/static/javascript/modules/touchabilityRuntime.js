@@ -65,8 +65,8 @@ export function updateTouchabilityUi(dom, state) {
   if (dom.touchDiameterStatus) {
     dom.touchDiameterStatus.textContent =
       Number.isFinite(mm)
-        ? `${Math.round(px)} px / ${mm.toFixed(1)} mm (${source}, Zeigefinger)`
-        : `${Math.round(px)} px (${source}, Zeigefinger)`;
+        ? `${Math.round(px)} px / ${mm.toFixed(1)} mm (${source})`
+        : `${Math.round(px)} px (${source})`;
   }
 
   // Dedicated pixel value display.

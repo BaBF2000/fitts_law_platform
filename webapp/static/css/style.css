@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Fitts Display Lab — Main Stylesheet
+   Fitts Display Lab - Main Stylesheet
 
    Organigram reference:
    - Frontend Layer
@@ -1385,4 +1385,52 @@ p{
 
 .monteCarloSummary .kpi span{
   font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   Fix: scroll inside setup and design cards
+   ========================================================================== */
+
+.setupPanel,
+.panel{
+  min-height: 0;
+  overflow: hidden;
+}
+
+.card{
+  display: flex;
+  flex-direction: column;
+  max-height: calc(var(--appH) - 56px - var(--sat) - var(--sab));
+}
+
+.cardScroll{
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+/* Session design / "Design erstellen" editor */
+#sessionConfigPanel .sessionCard{
+  height: calc(var(--appH) - 56px - var(--sat) - var(--sab));
+  max-height: calc(var(--appH) - 56px - var(--sat) - var(--sab));
+  min-height: 0;
+}
+
+#sessionConfigPanel .sessionBody{
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#sessionConfigPanel #blocksContainer{
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
