@@ -26,7 +26,7 @@
  * - documentation files
  */
 
-const CACHE_VERSION = "v24";
+const CACHE_VERSION = "v2";
 const CACHE = `fitts-${CACHE_VERSION}`;
 
 /**

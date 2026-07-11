@@ -37,8 +37,8 @@ from fitts_data import FittsDataClient
 # Test configuration
 # ---------------------------------------------------------------------
 
-PARTICIPANT = "P01"
-SESSION = "S1"
+PARTICIPANT = "P12"
+SESSION = "SP3"
 
 SHOW_PLOTS = False
 SAVE_PLOTS = True
@@ -890,17 +890,17 @@ def main() -> None:
             save_or_show_plot(fig, "12_mt_boxplot_by_id_direct.png")
 
         
-        # save_notebook_artifact(
-        #     participant=PARTICIPANT,
-        #     session=SESSION,
-        #     notebook_dir=NOTEBOOK_DIR,
-        #     report_dir=REPORT_DIR,
-        #     diagnostic_dir=DIAGNOSTIC_DIR,
-        #     plot_dir=PLOT_DIR,
-        #     filename=f"{PARTICIPANT}_{SESSION}_test_report.ipynb",
-        #     report_filename=f"{PARTICIPANT}_{SESSION}_session_report.md",
-        #     diagnostics_filename=f"{PARTICIPANT}_{SESSION}_diagnostics.json",
-        # )
+        save_notebook_artifact(
+            participant=PARTICIPANT,
+            session=SESSION,
+            notebook_dir=NOTEBOOK_DIR,
+            report_dir=REPORT_DIR,
+            diagnostic_dir=DIAGNOSTIC_DIR,
+            plot_dir=PLOT_DIR,
+            filename=f"{PARTICIPANT}_{SESSION}_test_report.ipynb",
+            report_filename=f"{PARTICIPANT}_{SESSION}_session_report.md",
+            diagnostics_filename=f"{PARTICIPANT}_{SESSION}_diagnostics.json",
+        )
         
         save_log_artifact(
         (

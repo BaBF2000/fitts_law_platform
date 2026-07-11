@@ -136,9 +136,9 @@ def create_app() -> Flask:
         if app.config.get("ALLOW_PUBLIC", False):
             return None
 
-        if not is_private_client(get_client_ip()):
-            # Keep responses simple (no HTML) for kiosk-like clients.
-            return Response("Forbidden (LAN only)", status=403, mimetype="text/plain")
+        # if not is_private_client(get_client_ip()):
+        #     # Keep responses simple (no HTML) for kiosk-like clients.
+        #     return Response("Forbidden (LAN only)", status=403, mimetype="text/plain")
 
         if is_admin_path(request.path) and app.config.get("ADMIN_TOKEN", ""):
             if not has_valid_admin_token():

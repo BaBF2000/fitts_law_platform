@@ -126,7 +126,7 @@ flowchart TD
     G --> I
     H --> I
 
-    I --> J["Seitenverhältnis der Referenzkarte erhalten"]
+    I --> J["Seitenverhältnis der Referenze erhalten"]
     J --> K["Sample speichern"]
     K --> L{"Weitere Samples nötig?"}
 

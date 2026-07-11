@@ -104,7 +104,7 @@ export function initCalibration(dom, state, ui) {
    * Unit:
    *   CSS pixels.
    */
-  const MIN_RECT_WIDTH_PX = 120;
+  const MIN_RECT_WIDTH_PX = 60;
 
   /**
    * Initial calibration rectangle width.
